@@ -1,0 +1,41 @@
+# Compiled daemon binary
+/agentui-daemon
+*.exe
+
+# Go build/test artifacts
+*.test
+*.out
+coverage.txt
+
+# Node
+node_modules/
+web/node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Frontend build output
+web/dist/
+web/.vite/
+
+# Tauri build output
+web/src-tauri/target/
+web/src-tauri/gen/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+web/.env
+web/.env.*
+!web/.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Tauri desktop build artifacts
+web/src-tauri/target/
+web/src-tauri/binaries/
+web/src-tauri/gen/

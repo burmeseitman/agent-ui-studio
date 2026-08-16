@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="AgentUI Studio — a local-first workspace for Ollama, LM Studio and other local AI engines" />
+    <meta name="color-scheme" content="dark" />
+    <title>AgentUI Studio</title>
+    <style>
+      /* Painted before the bundle parses, so launch is a dark window rather
+         than a white flash — very visible in a desktop app. */
+      html, body { margin: 0; background: #07080b; }
+    </style>
+  </head>
+  <body class="overflow-hidden">
+    <noscript>
+      <div style="padding:2rem;color:#e5e8ee;background:#0b0d12;text-align:center;font-family:system-ui">
+        JavaScript is required to run AgentUI Studio.
+      </div>
+    </noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
