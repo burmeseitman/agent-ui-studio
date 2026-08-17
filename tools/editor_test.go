@@ -104,6 +104,44 @@ func TestEditFile_StaysInsideWorkspace(t *testing.T) {
 	}
 }
 
+func TestEditFile_CreatesFileWhenOldStringEmpty(t *testing.T) {
+	dir := withWorkspace(t)
+	out, err := EditFile("calculator/index.html", "", "<html><body>Calc</body></html>", false)
+	if err != nil {
+		t.Fatalf("expected EditFile with empty old_string to create file, got err: %v", err)
+	}
+	if !strings.Contains(out, "Successfully wrote") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "calculator", "index.html"))
+	if err != nil {
+		t.Fatalf("failed to read created file: %v", err)
+	}
+	if string(data) != "<html><body>Calc</body></html>" {
+		t.Fatalf("unexpected file contents: %q", string(data))
+	}
+}
+
+func TestEditFile_CreatesFileWhenTargetDoesNotExist(t *testing.T) {
+	dir := withWorkspace(t)
+	out, err := EditFile("new_folder/app.js", "some_placeholder", "console.log('hello');", false)
+	if err != nil {
+		t.Fatalf("expected EditFile on non-existent file to create it, got err: %v", err)
+	}
+	if !strings.Contains(out, "Successfully wrote") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "new_folder", "app.js"))
+	if err != nil {
+		t.Fatalf("failed to read created file: %v", err)
+	}
+	if string(data) != "console.log('hello');" {
+		t.Fatalf("unexpected file contents: %q", string(data))
+	}
+}
+
 func TestDeleteAndMoveFile(t *testing.T) {
 	dir := withWorkspace(t)
 	if err := os.WriteFile(filepath.Join(dir, "old.txt"), []byte("data"), 0o644); err != nil {

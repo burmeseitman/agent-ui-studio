@@ -362,6 +362,15 @@ func ExecuteToolContext(ctx context.Context, name string, argumentsJSON string) 
 	case "write_file":
 		path := getStringArg("path")
 		content := getStringArg("content")
+		if content == "" {
+			content = getStringArg("new_string")
+		}
+		if content == "" {
+			content = getStringArg("code")
+		}
+		if content == "" {
+			content = getStringArg("text")
+		}
 		if path == "" {
 			return "", fmt.Errorf("missing 'path' argument")
 		}
@@ -375,6 +384,15 @@ func ExecuteToolContext(ctx context.Context, name string, argumentsJSON string) 
 		path := getStringArg("path")
 		oldString := getStringArg("old_string")
 		newString := getStringArg("new_string")
+		if newString == "" {
+			newString = getStringArg("content")
+		}
+		if newString == "" {
+			newString = getStringArg("code")
+		}
+		if newString == "" {
+			newString = getStringArg("text")
+		}
 		if path == "" {
 			return "", fmt.Errorf("missing 'path' argument")
 		}

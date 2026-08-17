@@ -23,21 +23,32 @@ function parseWriteArgs(toolName: string, argumentsJson: string): ParsedWrite | 
     if (typeof parsed?.path !== 'string') return null;
 
     if (toolName === 'edit_file') {
-      if (typeof parsed.old_string !== 'string' || typeof parsed.new_string !== 'string') {
-        return null;
-      }
+      const newString =
+        typeof parsed.new_string === 'string'
+          ? parsed.new_string
+          : typeof parsed.content === 'string'
+            ? parsed.content
+            : '';
+      const oldString = typeof parsed.old_string === 'string' ? parsed.old_string : '';
+
       return {
         path: parsed.path,
         content: '',
         edit: {
-          oldString: parsed.old_string,
-          newString: parsed.new_string,
+          oldString,
+          newString,
           replaceAll: parsed.replace_all === true,
         },
       };
     }
 
-    return { path: parsed.path, content: typeof parsed.content === 'string' ? parsed.content : '' };
+    const content =
+      typeof parsed.content === 'string'
+        ? parsed.content
+        : typeof parsed.new_string === 'string'
+          ? parsed.new_string
+          : '';
+    return { path: parsed.path, content };
   } catch {
     return null;
   }
@@ -48,7 +59,10 @@ function applyEdit(
   current: string,
   edit: { oldString: string; newString: string; replaceAll: boolean }
 ): { result: string; matches: number } {
-  const matches = edit.oldString ? current.split(edit.oldString).length - 1 : 0;
+  if (!edit.oldString) {
+    return { result: edit.newString, matches: 1 };
+  }
+  const matches = current.split(edit.oldString).length - 1;
   if (matches === 0) return { result: current, matches: 0 };
   const result = edit.replaceAll
     ? current.split(edit.oldString).join(edit.newString)

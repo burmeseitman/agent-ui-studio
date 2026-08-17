@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -32,7 +33,8 @@ const (
 // byte-identical no matter what the model would have regenerated.
 func EditFile(path, oldString, newString string, replaceAll bool) (string, error) {
 	if oldString == "" {
-		return "", fmt.Errorf("old_string cannot be empty; use write_file to create a file")
+		// When old_string is empty, the model is creating a new file with new_string.
+		return WriteFile(path, newString)
 	}
 	if oldString == newString {
 		return "", fmt.Errorf("old_string and new_string are identical, nothing to change")
@@ -45,6 +47,10 @@ func EditFile(path, oldString, newString string, replaceAll bool) (string, error
 
 	data, err := os.ReadFile(safePath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// If the target file does not exist yet, create it.
+			return WriteFile(path, newString)
+		}
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 	content := string(data)
