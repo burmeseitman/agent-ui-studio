@@ -258,6 +258,10 @@ interface UseChatProps {
   readOnlyTools: Record<string, boolean>;
   /** Classifies a model as cloud-hosted using its engine's real URL. */
   isCloud: CloudDetector;
+  /** Absolute path the file tools are sandboxed to. */
+  workspacePath: string;
+  /** A shallow listing of that directory, so the model can orient itself. */
+  workspaceEntries: string[];
   /** The conversation being edited. Changing it swaps the visible history. */
   sessionId: string;
   /** Messages belonging to sessionId, as loaded from storage. */
@@ -298,6 +302,8 @@ export function useChat({
   handleSelectModel,
   readOnlyTools,
   isCloud,
+  workspacePath,
+  workspaceEntries,
   sessionId,
   sessionMessages,
   onCommitMessages,
@@ -365,10 +371,26 @@ export function useChat({
     dispatch({ type: 'SET_STREAMING', isStreaming: false });
   }, []);
 
+  const workspaceRef = useRef({ path: workspacePath, entries: workspaceEntries });
+  workspaceRef.current = { path: workspacePath, entries: workspaceEntries };
+
   const buildSystemPrompt = useCallback(() => {
     const params = paramsRef.current;
     if (!params) return '';
-    return params.systemPrompt.trim();
+
+    const prompt = params.systemPrompt.trim();
+    const { path, entries } = workspaceRef.current;
+    if (!path || (params.enabledTools?.length ?? 0) === 0) return prompt;
+
+    // Without this the model has no idea which directory relative paths resolve
+    // against, so it guesses names like "main.go" and every read fails.
+    const listing = entries.length > 0 ? `\nIt currently contains: ${entries.join(', ')}.` : '';
+    const context =
+      `\n\nYour file tools operate inside ${path}. ` +
+      `Relative paths resolve against that directory, and anything outside it is refused.` +
+      listing;
+
+    return prompt + context;
   }, [paramsRef]);
 
   /**
@@ -408,6 +430,18 @@ export function useChat({
         enabledTools: params?.enabledTools,
         toolMode,
         autoApproveTools,
+        // Coding tasks are multi-step by nature; a single question is not.
+        maxToolIterations:
+          params?.maxToolIterations ?? (params?.profession === 'developer' ? 24 : 8),
+
+        onContentReplaced: (content) => {
+          dispatch({ type: 'UPDATE_STREAMING_CONTENT', id: assistantMsgId, content });
+        },
+
+        onNotice: (notice) => {
+          dispatch({ type: 'SET_FALLBACK_TOAST', toast: notice.message });
+          setTimeout(() => dispatch({ type: 'SET_FALLBACK_TOAST', toast: null }), 8000);
+        },
 
         onChunk: (_token, fullText, stats) => {
           dispatch({ type: 'SET_STATS', stats });

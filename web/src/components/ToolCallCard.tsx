@@ -15,6 +15,11 @@ import {
   Code2,
   ShieldAlert,
   X,
+  FilePen,
+  Trash2,
+  FolderInput,
+  FolderTree,
+  Search,
 } from 'lucide-react';
 
 import { WriteDiff } from './WriteDiff';
@@ -26,7 +31,10 @@ interface ToolCallCardProps {
 }
 
 /** Tools that change the user's machine, and so warrant a louder prompt. */
-const MUTATING_TOOLS = new Set(['write_file']);
+const MUTATING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'move_file']);
+
+/** Tools whose pending arguments are best reviewed as a diff. */
+const DIFF_TOOLS = new Set(['write_file', 'edit_file']);
 
 /** Renders raw JSON arguments readably, falling back to the original string. */
 function formatArguments(raw: string): string {
@@ -44,6 +52,11 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   list_dir: <FolderOpen className="w-3.5 h-3.5 text-accent-fg" />,
   fetch_url: <Globe className="w-3.5 h-3.5 text-accent-fg" />,
   analyze_readability: <BarChart2 className="w-3.5 h-3.5 text-danger-fg" />,
+  edit_file: <FilePen className="w-3.5 h-3.5 text-warning-fg" />,
+  delete_file: <Trash2 className="w-3.5 h-3.5 text-danger-fg" />,
+  move_file: <FolderInput className="w-3.5 h-3.5 text-info-fg" />,
+  list_tree: <FolderTree className="w-3.5 h-3.5 text-accent-fg" />,
+  search_files: <Search className="w-3.5 h-3.5 text-info-fg" />,
 };
 
 export const ToolCallCard: React.FC<ToolCallCardProps> = React.memo(({ toolCall, onApprove, onDeny }) => {
@@ -68,6 +81,7 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = React.memo(({ toolCall,
   const isError = toolCall.status === 'error';
   const isDenied = toolCall.status === 'denied';
   const isMutating = MUTATING_TOOLS.has(toolCall.toolName);
+  const isDiffable = DIFF_TOOLS.has(toolCall.toolName);
 
   const outputLines = (toolCall.output || toolCall.error || '').split('\n').filter(Boolean).length;
 
@@ -165,12 +179,12 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = React.memo(({ toolCall,
           </div>
 
           {/* For writes, show what would actually change rather than raw JSON. */}
-          {isPending && isMutating && (
+          {isPending && isDiffable && (
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-400 mb-1">
                 Proposed changes
               </div>
-              <WriteDiff argumentsJson={toolCall.arguments} />
+              <WriteDiff toolName={toolCall.toolName} argumentsJson={toolCall.arguments} />
             </div>
           )}
 

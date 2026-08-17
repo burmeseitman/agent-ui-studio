@@ -46,6 +46,68 @@ type Server struct {
 
 	toolLimiter *rateLimiter
 	staticDir   string
+
+	// originMu guards the browser origins permitted to call the API.
+	originMu       sync.RWMutex
+	allowedOrigins map[string]bool
+}
+
+// SetAllowedOrigins fixes which browser origins may drive the daemon.
+//
+// Trusting every localhost port is not safe: any dev server the user happens to
+// run — including one serving a project they just cloned — could otherwise
+// reconfigure the workspace, enable command execution, and run code. Only the
+// app's own origins are trusted by default.
+func (s *Server) SetAllowedOrigins(port int, extra []string) {
+	allowed := map[string]bool{
+		// The desktop shell.
+		"tauri://localhost":       true,
+		"http://tauri.localhost":  true,
+		"https://tauri.localhost": true,
+	}
+	// The daemon's own origin, for the bundled frontend.
+	for _, host := range []string{"localhost", "127.0.0.1"} {
+		allowed[fmt.Sprintf("http://%s:%d", host, port)] = true
+	}
+	// The Vite dev server, which is how the app runs during development.
+	for _, devPort := range []int{5173, 1420} {
+		for _, host := range []string{"localhost", "127.0.0.1"} {
+			allowed[fmt.Sprintf("http://%s:%d", host, devPort)] = true
+		}
+	}
+	for _, origin := range extra {
+		if trimmed := strings.TrimSpace(origin); trimmed != "" {
+			allowed[trimmed] = true
+		}
+	}
+
+	s.originMu.Lock()
+	s.allowedOrigins = allowed
+	s.originMu.Unlock()
+}
+
+// isAllowedOrigin reports whether a browser origin may call the API.
+func (s *Server) isAllowedOrigin(origin string) bool {
+	if origin == "" {
+		// Non-browser clients (curl, the CLI) send no Origin. They are already
+		// constrained by the loopback binding and, when set, the API token.
+		return true
+	}
+
+	s.originMu.RLock()
+	allowed := s.allowedOrigins
+	s.originMu.RUnlock()
+
+	if allowed[origin] {
+		return true
+	}
+
+	// Tauri serves the app from a scheme-based origin on some platforms.
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "tauri" || strings.EqualFold(parsed.Hostname(), "tauri.localhost")
 }
 
 // NewServer initializes a new Server with engine scanner and adapter router.
@@ -63,6 +125,10 @@ func NewServer(scanner *engine.Scanner, router *adapter.Router) *Server {
 		mux:         http.NewServeMux(),
 		toolLimiter: newRateLimiter(30, time.Minute),
 	}
+
+	// Establish the default origin policy up front so a Server is never
+	// accidentally permissive — or accidentally unusable — before configuration.
+	s.SetAllowedOrigins(8080, nil)
 
 	s.routes()
 	return s
@@ -90,6 +156,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Handle("GET /api/v1/tools", http.TimeoutHandler(http.HandlerFunc(s.handleGetTools), 30*time.Second, `{"error": "request timeout"}`))
 	s.mux.Handle("POST /api/v1/tools/execute", http.TimeoutHandler(http.HandlerFunc(s.handleExecuteTool), 30*time.Second, `{"error": "request timeout"}`))
+	s.mux.Handle("GET /api/v1/workspace", http.TimeoutHandler(http.HandlerFunc(s.handleGetWorkspace), 10*time.Second, `{"error": "request timeout"}`))
+	s.mux.Handle("POST /api/v1/workspace", http.TimeoutHandler(http.HandlerFunc(s.handleSetWorkspace), 10*time.Second, `{"error": "request timeout"}`))
+	s.mux.Handle("GET /api/v1/settings", http.TimeoutHandler(http.HandlerFunc(s.handleGetSettings), 10*time.Second, `{"error": "request timeout"}`))
+	s.mux.Handle("POST /api/v1/settings", http.TimeoutHandler(http.HandlerFunc(s.handleSetSettings), 10*time.Second, `{"error": "request timeout"}`))
 	s.mux.Handle("GET /health", http.TimeoutHandler(http.HandlerFunc(s.handleHealth), 5*time.Second, `{"error": "request timeout"}`))
 }
 
@@ -236,6 +306,146 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 }
 
+// WorkspaceResponse reports the directory the file tools are confined to.
+//
+// The model has no other way to learn where it is: without this the client
+// cannot tell it, and every relative path the model guesses fails.
+type WorkspaceResponse struct {
+	Path string `json:"path"`
+	// Entries is a shallow listing, so the client can show the user what the
+	// agent can actually see.
+	Entries []string `json:"entries,omitempty"`
+	// IsHomeDir marks the default that is almost never what the user wants, so
+	// the UI can prompt them to pick an actual project folder.
+	IsHomeDir bool `json:"is_home_dir"`
+}
+
+type setWorkspaceRequest struct {
+	Path string `json:"path"`
+}
+
+func workspaceEntries(root string, limit int) []string {
+	dir, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, limit)
+	for _, entry := range dir {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if entry.IsDir() {
+			name += "/"
+		}
+		names = append(names, name)
+		if len(names) >= limit {
+			break
+		}
+	}
+	return names
+}
+
+// isHomeDir reports whether the path is the user's home directory itself.
+func isHomeDir(path string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	resolvedHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		resolvedHome = home
+	}
+	resolvedPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		resolvedPath = path
+	}
+	return filepath.Clean(resolvedPath) == filepath.Clean(resolvedHome)
+}
+
+func describeWorkspace(root string) WorkspaceResponse {
+	return WorkspaceResponse{
+		Path:      root,
+		Entries:   workspaceEntries(root, 40),
+		IsHomeDir: isHomeDir(root),
+	}
+}
+
+func (s *Server) handleGetWorkspace(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(describeWorkspace(tools.Workspace()))
+}
+
+// handleSetWorkspace repoints the file tools at another directory.
+//
+// This is deliberately not a tool: only the user, through the UI, can move the
+// sandbox — a model (or a prompt injected into a page it fetched) cannot widen
+// its own reach by calling it.
+func (s *Server) handleSetWorkspace(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	var req setWorkspaceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	resolved, err := tools.SetWorkspace(strings.TrimSpace(req.Path))
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	slog.Info("Workspace changed", "workspace", resolved)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(describeWorkspace(resolved))
+}
+
+// SettingsResponse reports daemon-level capabilities the user controls.
+type SettingsResponse struct {
+	// ProjectExecution allows build and run commands (npm install, node, go test).
+	ProjectExecution bool     `json:"project_execution"`
+	AllowedCommands  []string `json:"allowed_commands"`
+}
+
+type setSettingsRequest struct {
+	ProjectExecution *bool `json:"project_execution,omitempty"`
+}
+
+func currentSettings() SettingsResponse {
+	return SettingsResponse{
+		ProjectExecution: tools.ProjectExecutionEnabled(),
+		AllowedCommands:  tools.AllowedCommandNames(),
+	}
+}
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(currentSettings())
+}
+
+// handleSetSettings toggles daemon capabilities.
+//
+// Like the workspace, this is a user action and deliberately not a tool: a model
+// must not be able to grant itself the ability to run arbitrary code.
+func (s *Server) handleSetSettings(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	var req setSettingsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+
+	if req.ProjectExecution != nil {
+		tools.SetProjectExecution(*req.ProjectExecution)
+		slog.Warn("Project execution setting changed", "enabled", *req.ProjectExecution)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(currentSettings())
+}
+
 // ToolsResponse describes the tool surface available to a profession, along
 // with the metadata the client needs to render approval prompts accurately.
 type ToolsResponse struct {
@@ -359,29 +569,6 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(s.staticDir, "index.html"))
 }
 
-// isAllowedOrigin checks if an Origin header is trusted (localhost, 127.0.0.1, or tauri app).
-func isAllowedOrigin(origin string) bool {
-	if origin == "" {
-		return true // Allow CLI tools, direct curl, and native desktop requests
-	}
-
-	parsed, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-
-	hostname := strings.ToLower(parsed.Hostname())
-	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" || hostname == "tauri.localhost" {
-		return true
-	}
-
-	if parsed.Scheme == "tauri" || parsed.Scheme == "vscode-webview" {
-		return true
-	}
-
-	return false
-}
-
 // corsMiddleware sets security headers and strictly restricts origins to prevent unauthorized web access.
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -393,7 +580,7 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		origin := r.Header.Get("Origin")
 
 		if origin != "" {
-			if isAllowedOrigin(origin) {
+			if s.isAllowedOrigin(origin) {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")

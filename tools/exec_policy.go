@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 )
 
 // commandRule describes what a single allowlisted binary is permitted to do.
@@ -17,6 +18,24 @@ type commandRule struct {
 	// DeniedArgs are rejected anywhere in argv. Matching is exact or against
 	// the portion preceding '=' so that "--flag=value" forms are also caught.
 	DeniedArgs []string
+}
+
+// Project execution is the deliberate escape hatch from the read-only policy.
+//
+// Building software means installing dependencies and running tests, which is
+// arbitrary code execution by definition — a package's install script or a test
+// file can do anything. It is therefore off by default and only the user can
+// turn it on, per session, from the UI.
+var projectExecution atomic.Bool
+
+// SetProjectExecution enables or disables the build-and-run command set.
+func SetProjectExecution(enabled bool) {
+	projectExecution.Store(enabled)
+}
+
+// ProjectExecutionEnabled reports whether build and test commands may run.
+func ProjectExecutionEnabled() bool {
+	return projectExecution.Load()
 }
 
 func argSet(names ...string) map[string]struct{} {
@@ -88,6 +107,42 @@ var allowedCommands = map[string]commandRule{
 	},
 }
 
+// projectCommands are permitted only while project execution is enabled.
+//
+// Each of these can run code the model wrote, which is the point: without them
+// an agent can produce a project but never install, build, run or test it.
+var projectCommands = map[string]commandRule{
+	"node":     {},
+	"npx":      {},
+	"deno":     {},
+	"bun":      {},
+	"python":   {},
+	"python3":  {},
+	"pytest":   {},
+	"ruby":     {},
+	"make":     {},
+	"cargo":    {},
+	"rustc":    {},
+	"mkdir":    {},
+	"touch":    {},
+	"cp":       {},
+	"mv":       {},
+	"tsc":      {},
+	"vite":     {},
+	"eslint":   {},
+	"prettier": {},
+	"gofmt":    {},
+}
+
+// projectSubcommands widen existing entries rather than replacing them, so
+// "npm install" becomes available without also unlocking "git push".
+var projectSubcommands = map[string][]string{
+	"npm":  {"install", "i", "ci", "run", "test", "exec", "build", "start", "audit", "update", "uninstall", "init", "publish"},
+	"go":   {"run", "test", "generate", "get", "install", "work"},
+	"yarn": {"install", "add", "run", "build", "test", "dev"},
+	"pnpm": {"install", "add", "run", "build", "test", "dev"},
+}
+
 // checkCommandPolicy validates a parsed argv against the allowlist.
 func checkCommandPolicy(argv []string) error {
 	if len(argv) == 0 {
@@ -100,8 +155,43 @@ func checkCommandPolicy(argv []string) error {
 	}
 
 	rule, ok := allowedCommands[base]
+	if !ok && ProjectExecutionEnabled() {
+		rule, ok = projectCommands[base]
+	}
 	if !ok {
+		if _, blocked := projectCommands[base]; blocked {
+			return fmt.Errorf(
+				"command %q needs project execution, which is turned off. Enable it in Settings if you want the agent to install, build and run code", base)
+		}
 		return fmt.Errorf("security violation: command %q is not in the allowlist", base)
+	}
+
+	// Widen subcommand restrictions while project execution is on.
+	if ProjectExecutionEnabled() && len(rule.Subcommands) > 0 {
+		if extra, has := projectSubcommands[base]; has {
+			widened := make(map[string]struct{}, len(rule.Subcommands)+len(extra))
+			for k := range rule.Subcommands {
+				widened[k] = struct{}{}
+			}
+			for _, sub := range extra {
+				widened[sub] = struct{}{}
+			}
+			rule.Subcommands = widened
+		}
+	} else if !ProjectExecutionEnabled() {
+		if _, restricted := projectSubcommands[base]; restricted && len(rule.Subcommands) > 0 {
+			if len(argv) > 1 {
+				if _, allowed := rule.Subcommands[argv[1]]; !allowed {
+					for _, sub := range projectSubcommands[base] {
+						if argv[1] == sub {
+							return fmt.Errorf(
+								"%q %q needs project execution, which is turned off. Enable it in Settings if you want the agent to install, build and run code",
+								base, argv[1])
+						}
+					}
+				}
+			}
+		}
 	}
 
 	for _, arg := range argv[1:] {

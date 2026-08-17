@@ -109,6 +109,51 @@ describe('ToolCallCard approval gate', () => {
   });
 });
 
+describe('ToolCallCard edit_file preview', () => {
+  const pendingEdit: ToolCallExecution = {
+    id: 'call_3',
+    toolName: 'edit_file',
+    arguments: JSON.stringify({
+      path: 'index.html',
+      old_string: '<p>old</p>',
+      new_string: '<h1>Hello</h1>\n<p>old</p>',
+    }),
+    status: 'pending',
+  };
+
+  const stubRead = (output: string) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ name: 'read_file', output }) }))
+    );
+
+  it('previews the edit as a diff against the real file', async () => {
+    stubRead('<html>\n<p>old</p>\n</html>\n');
+    render(<ToolCallCard toolCall={pendingEdit} onApprove={vi.fn()} onDeny={vi.fn()} />);
+
+    // Only the inserted line is an addition; the rest of the file is untouched.
+    await waitFor(() => expect(screen.getByText('+1')).toBeDefined());
+    expect(screen.getByText('-0')).toBeDefined();
+    vi.unstubAllGlobals();
+  });
+
+  it('warns when the edit would not apply', async () => {
+    stubRead('<html>\n<p>completely different</p>\n</html>\n');
+    render(<ToolCallCard toolCall={pendingEdit} onApprove={vi.fn()} onDeny={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText(/was not found/i)).toBeDefined());
+    vi.unstubAllGlobals();
+  });
+
+  it('warns when the target snippet is ambiguous', async () => {
+    stubRead('<p>old</p>\n<p>old</p>\n');
+    render(<ToolCallCard toolCall={pendingEdit} onApprove={vi.fn()} onDeny={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText(/appears 2 times/i)).toBeDefined());
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('ToolCallCard settled states', () => {
   it('offers no approval controls once a call has run', () => {
     render(
@@ -127,5 +172,46 @@ describe('ToolCallCard settled states', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: /execute_command/ }));
     expect(screen.getByText(/not executed/i)).toBeDefined();
+  });
+});
+
+describe('rendering untrusted model output', () => {
+  it('does not execute HTML a model puts in a tool result', async () => {
+    // Tool output is attacker-influenced: a fetched page or a file could contain
+    // markup, and it must render as text rather than as DOM.
+    render(
+      <ToolCallCard
+        toolCall={{
+          id: 'c1',
+          toolName: 'fetch_url',
+          arguments: '{"url":"https://example.com"}',
+          output: '<img src=x onerror="window.__pwned=1"><script>window.__pwned=1</script>',
+          status: 'success',
+        }}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /fetch_url/ }));
+
+    expect(document.querySelector('script')).toBeNull();
+    expect(document.querySelector('img')).toBeNull();
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+    // The payload is visible as literal text.
+    expect(screen.getByText(/onerror/)).toBeDefined();
+  });
+
+  it('escapes markup inside tool arguments', async () => {
+    render(
+      <ToolCallCard
+        toolCall={{
+          id: 'c2',
+          toolName: 'write_file',
+          arguments: '{"path":"<img src=x onerror=alert(1)>","content":"x"}',
+          output: 'ok',
+          status: 'success',
+        }}
+      />
+    );
+    expect(document.querySelector('img')).toBeNull();
   });
 });

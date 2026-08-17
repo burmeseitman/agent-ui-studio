@@ -59,7 +59,7 @@ func AllTools() []ToolDefinition {
 				Category: "developer",
 				Function: FunctionDefinition{
 					Name:        "write_file",
-					Description: "Write or update code content in a target file in the workspace.",
+					Description: "Create a new file, or completely overwrite an existing one. Parent directories are created automatically. To change part of an existing file use edit_file instead — overwriting requires reproducing the whole file and loses anything you omit.",
 					Parameters: ToolParametersSchema{
 						Type: "object",
 						Properties: map[string]ToolParameterProperty{
@@ -90,6 +90,99 @@ func AllTools() []ToolDefinition {
 								Description: "Directory path to list (default: '.').",
 							},
 						},
+					},
+				},
+			},
+
+			{
+				Type:     "function",
+				Category: "developer",
+				Function: FunctionDefinition{
+					Name:        "edit_file",
+					Description: "Change part of an existing file by replacing an exact snippet. Prefer this over write_file for any edit: it leaves the rest of the file untouched. Read the file first and copy old_string exactly, including indentation. old_string must match exactly once unless replace_all is true.",
+					Parameters: ToolParametersSchema{
+						Type: "object",
+						Properties: map[string]ToolParameterProperty{
+							"path": {
+								Type:        "string",
+								Description: "File to modify.",
+							},
+							"old_string": {
+								Type:        "string",
+								Description: "Exact text to replace, with enough surrounding context to be unique.",
+							},
+							"new_string": {
+								Type:        "string",
+								Description: "Replacement text.",
+							},
+							"replace_all": {
+								Type:        "boolean",
+								Description: "Replace every occurrence instead of requiring a unique match.",
+							},
+						},
+						Required: []string{"path", "old_string", "new_string"},
+					},
+				},
+			},
+			{
+				Type:     "function",
+				Category: "developer",
+				Function: FunctionDefinition{
+					Name:        "delete_file",
+					Description: "Delete a file, or an empty directory, inside the workspace.",
+					Parameters: ToolParametersSchema{
+						Type: "object",
+						Properties: map[string]ToolParameterProperty{
+							"path": {Type: "string", Description: "Path to delete."},
+						},
+						Required: []string{"path"},
+					},
+				},
+			},
+			{
+				Type:     "function",
+				Category: "developer",
+				Function: FunctionDefinition{
+					Name:        "move_file",
+					Description: "Rename or move a file or directory within the workspace.",
+					Parameters: ToolParametersSchema{
+						Type: "object",
+						Properties: map[string]ToolParameterProperty{
+							"from": {Type: "string", Description: "Existing path."},
+							"to":   {Type: "string", Description: "New path. Parent directories are created."},
+						},
+						Required: []string{"from", "to"},
+					},
+				},
+			},
+			{
+				Type:     "function",
+				Category: "developer",
+				Function: FunctionDefinition{
+					Name:        "list_tree",
+					Description: "Show the project structure recursively in one call. Use this first to orient yourself. Generated directories such as node_modules, dist and .git are skipped.",
+					Parameters: ToolParametersSchema{
+						Type: "object",
+						Properties: map[string]ToolParameterProperty{
+							"path":      {Type: "string", Description: "Directory to start from (default: '.')."},
+							"max_depth": {Type: "integer", Description: "How many levels deep to go (default 3, max 8)."},
+						},
+					},
+				},
+			},
+			{
+				Type:     "function",
+				Category: "developer",
+				Function: FunctionDefinition{
+					Name:        "search_files",
+					Description: "Find a literal string across the project and return file:line matches. Use this to locate a function or symbol before reading whole files.",
+					Parameters: ToolParametersSchema{
+						Type: "object",
+						Properties: map[string]ToolParameterProperty{
+							"query":       {Type: "string", Description: "Literal text to find."},
+							"path_filter": {Type: "string", Description: "Only search paths containing this substring (e.g. 'src/' or '.go')."},
+						},
+						Required: []string{"query"},
 					},
 				},
 			},
@@ -199,9 +292,15 @@ func GetToolsForProfession(profession string, customTools []string) []ToolDefini
 var ReadOnlyTools = map[string]bool{
 	"read_file":           true,
 	"list_dir":            true,
+	"list_tree":           true,
+	"search_files":        true,
 	"analyze_readability": true,
 	"fetch_url":           true,
-	"execute_command":     true, // the command policy itself restricts this to read-only binaries
+	// execute_command is read-only only while project execution is off; the
+	// server re-checks that at approval time rather than trusting this map.
+	"execute_command": true,
+	// edit_file, write_file, delete_file and move_file all change the
+	// workspace and are deliberately absent.
 }
 
 // IsKnownTool reports whether name refers to a registered tool.
@@ -271,6 +370,53 @@ func ExecuteToolContext(ctx context.Context, name string, argumentsJSON string) 
 	case "list_dir":
 		path := getStringArg("path")
 		return ListDir(path)
+
+	case "edit_file":
+		path := getStringArg("path")
+		oldString := getStringArg("old_string")
+		newString := getStringArg("new_string")
+		if path == "" {
+			return "", fmt.Errorf("missing 'path' argument")
+		}
+		replaceAll := false
+		if val, ok := args["replace_all"]; ok {
+			if b, ok := val.(bool); ok {
+				replaceAll = b
+			}
+		}
+		return EditFile(path, oldString, newString, replaceAll)
+
+	case "delete_file":
+		path := getStringArg("path")
+		if path == "" {
+			return "", fmt.Errorf("missing 'path' argument")
+		}
+		return DeleteFile(path)
+
+	case "move_file":
+		from := getStringArg("from")
+		to := getStringArg("to")
+		if from == "" || to == "" {
+			return "", fmt.Errorf("both 'from' and 'to' are required")
+		}
+		return MoveFile(from, to)
+
+	case "list_tree":
+		path := getStringArg("path")
+		depth := 0
+		if val, ok := args["max_depth"]; ok {
+			if f, ok := val.(float64); ok {
+				depth = int(f)
+			}
+		}
+		return ListTree(path, depth)
+
+	case "search_files":
+		query := getStringArg("query")
+		if query == "" {
+			return "", fmt.Errorf("missing 'query' argument")
+		}
+		return SearchFiles(query, getStringArg("path_filter"))
 
 	case "fetch_url":
 		url := getStringArg("url")

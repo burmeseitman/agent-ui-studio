@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +25,10 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	port := flag.Int("port", 8080, "Port to run the AgentUI daemon on")
+	listenHost := flag.String("host", "127.0.0.1",
+		"Interface to bind. Loopback by default: the daemon executes commands and reads files, so exposing it on a network is opt-in.")
+	allowedOrigins := flag.String("allowed-origins", "",
+		"Comma-separated extra browser origins permitted to call the API (e.g. http://localhost:3000)")
 	timeoutMs := flag.Int("timeout", 1500, "Discovery probe timeout in milliseconds")
 	ollamaURL := flag.String("ollama-url", "http://localhost:11434", "Ollama API base URL")
 	lmStudioURL := flag.String("lmstudio-url", "http://localhost:1234", "LM Studio API base URL")
@@ -32,6 +37,8 @@ func main() {
 		"Shut down when stdin reaches EOF. Set by the desktop app so the daemon cannot outlive a force-quit.")
 	workspace := flag.String("workspace", "", "Root directory tools may read and write (default: current directory)")
 	staticDir := flag.String("static-dir", "web/dist", "Directory containing the built frontend to serve (empty to disable)")
+	projectExec := flag.Bool("allow-project-execution", false,
+		"Start with build/run commands enabled (npm install, node, go test). Off by default; the UI can toggle it.")
 	flag.Parse()
 
 	if envPort := os.Getenv("PORT"); envPort != "" {
@@ -67,18 +74,17 @@ func main() {
 	}
 
 	if *workspace != "" {
-		abs, err := filepath.Abs(*workspace)
-		if err != nil {
-			slog.Error("Invalid workspace path", "path", *workspace, "error", err)
+		if _, err := tools.SetWorkspace(*workspace); err != nil {
+			slog.Error("Invalid workspace", "path", *workspace, "error", err)
 			os.Exit(1)
 		}
-		if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-			slog.Error("Workspace path is not a directory", "path", abs)
-			os.Exit(1)
-		}
-		tools.WorkspaceRoot = abs
 	}
-	slog.Info("Tool sandbox root", "workspace", tools.WorkspaceRoot)
+	slog.Info("Tool sandbox root", "workspace", tools.Workspace())
+
+	if *projectExec {
+		tools.SetProjectExecution(true)
+		slog.Warn("Project execution enabled: the agent may run build and test commands")
+	}
 
 	targets := []engine.Target{
 		{
@@ -98,8 +104,23 @@ func main() {
 	server := api.NewServer(scanner, router)
 	server.ServeStaticFrom(*staticDir)
 
+	// Binding to a non-loopback interface hands tool execution to the network,
+	// so it is never the default and is called out loudly when chosen.
+	if *listenHost != "127.0.0.1" && *listenHost != "localhost" && *listenHost != "::1" {
+		if token == "" {
+			slog.Error("Refusing to listen on a non-loopback address without an API token",
+				"host", *listenHost,
+				"hint", "pass -api-token, or bind to 127.0.0.1")
+			os.Exit(1)
+		}
+		slog.Warn("Listening beyond loopback: any host that can reach this port may drive the agent",
+			"host", *listenHost)
+	}
+
+	server.SetAllowedOrigins(*port, strings.Split(*allowedOrigins, ","))
+
 	httpServer := &http.Server{
-		Addr:              fmt.Sprintf(":%d", *port),
+		Addr:              net.JoinHostPort(*listenHost, fmt.Sprintf("%d", *port)),
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 20 * time.Second,
 		ReadTimeout:       0, // Streaming requests need no arbitrary read body timeout
@@ -123,7 +144,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("AgentUI Studio Daemon running", "port", *port)
+		slog.Info("AgentUI Studio Daemon running", "address", httpServer.Addr)
 		slog.Info("Configured engines", "ollama", *ollamaURL, "lmstudio", *lmStudioURL)
 		slog.Info("Endpoints available",
 			"discovery", fmt.Sprintf("GET http://localhost:%d/api/v1/engines", *port),

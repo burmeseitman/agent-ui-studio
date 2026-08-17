@@ -1,10 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { EngineInfo } from '../types';
 import { CloudDetector } from '../utils/models';
+import { describeChoice, isCoderModel, supportsTools } from '../utils/modelRanking';
+import { Profession } from '../types';
 import { ChevronDown, Cpu, Cloud, Check, Search } from 'lucide-react';
 
 interface ModelSelectorProps {
   engines: EngineInfo[];
+  profession: Profession;
   selectedEngine: string;
   selectedModel: string;
   onSelectModel: (engine: string, model: string) => void;
@@ -14,6 +17,7 @@ interface ModelSelectorProps {
 /** Engine-grouped model picker with a filter for large model lists. */
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
   engines,
+  profession,
   selectedEngine,
   selectedModel,
   onSelectModel,
@@ -24,6 +28,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isSelectedCloud = isCloud(selectedEngine, selectedModel);
+
+  const detailFor = (engineName: string, model: string) =>
+    engines.find((e) => e.name === engineName)?.model_details?.find((d) => d.name === model);
+
+  const selectedDetail = detailFor(selectedEngine, selectedModel);
+  // Explains the automatic choice, so the default does not look arbitrary.
+  const selectedSummary = describeChoice(profession, selectedModel, selectedDetail);
   const activeEngines = engines.filter((e) => e.active && e.models.length > 0);
 
   // Close on outside click, the usual dropdown affordance.
@@ -62,12 +73,18 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                     <div className="font-mono font-bold text-ink-50 text-[13px] truncate leading-tight">
                       {selectedModel || 'Select a Model'}
                     </div>
-                    <div className="text-[10px] font-mono text-ink-400 mt-0.5 flex items-center space-x-1.5">
-                      <span className="uppercase text-ink-200">{selectedEngine || 'none'}</span>
-                      <span>•</span>
-                      <span className={isSelectedCloud ? 'text-info-fg font-medium' : 'text-success-fg font-medium'}>
-                        {isSelectedCloud ? 'Cloud API' : 'Local GPU'}
+                    <div className="text-2xs text-ink-500 mt-0.5 flex items-center gap-1.5 truncate">
+                      <span className="uppercase text-ink-400">{selectedEngine || 'none'}</span>
+                      <span>·</span>
+                      <span className={isSelectedCloud ? 'text-info-fg' : 'text-success-fg'}>
+                        {isSelectedCloud ? 'cloud' : 'local'}
                       </span>
+                      {selectedSummary && (
+                        <>
+                          <span>·</span>
+                          <span className="truncate">{selectedSummary}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -123,6 +140,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                               {filteredModels.map((mod) => {
                                 const isSelected = eng.name === selectedEngine && mod === selectedModel;
                                 const modelIsCloud = isCloud(eng.name, mod);
+                                const modDetail = detailFor(eng.name, mod);
+                                const lacksTools =
+                                  profession === 'developer' && supportsTools(modDetail) === false;
+                                const isCoder = isCoderModel(mod, modDetail);
 
                                 return (
                                   <button
@@ -150,15 +171,28 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
                                       </span>
                                     </div>
 
-                                    <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                      {isCoder && (
+                                        <span className="text-2xs px-1.5 py-0.5 rounded border bg-accent/10 text-accent-fg border-accent/25">
+                                          code
+                                        </span>
+                                      )}
+                                      {lacksTools && (
+                                        <span
+                                          title="This model cannot call tools, so it cannot read or edit files"
+                                          className="text-2xs px-1.5 py-0.5 rounded border bg-warning/10 text-warning-fg border-warning/25"
+                                        >
+                                          no tools
+                                        </span>
+                                      )}
                                       <span
-                                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                                        className={`text-2xs px-1.5 py-0.5 rounded border ${
                                           modelIsCloud
-                                            ? 'bg-sky-500/10 text-sky-300 border-sky-500/20'
+                                            ? 'bg-info/10 text-info-fg border-info/25'
                                             : 'bg-success/10 text-success-fg border-success/25'
                                         }`}
                                       >
-                                        {modelIsCloud ? 'Cloud' : 'Local'}
+                                        {modelIsCloud ? 'cloud' : 'local'}
                                       </span>
                                       {isSelected && <Check className="w-3.5 h-3.5 text-accent-fg" />}
                                     </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChatParams } from '../types';
-import { Zap } from 'lucide-react';
+import { Zap, TerminalSquare } from 'lucide-react';
 import { TokenPrompt } from './TokenPrompt';
 
 export interface AuthControls {
@@ -11,15 +11,52 @@ export interface AuthControls {
   removeToken: () => void;
 }
 
+export interface DaemonCapabilities {
+  projectExecution: boolean;
+  isSaving: boolean;
+  setProjectExecution: (enabled: boolean) => void;
+}
+
 interface SettingsPanelProps {
   params: ChatParams;
   onChangeParams: (partial: Partial<ChatParams>) => void;
   auth: AuthControls;
+  daemon: DaemonCapabilities;
 }
 
 /** Daemon authentication and generation parameters. */
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ params, onChangeParams, auth }) => (
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({
+  params,
+  onChangeParams,
+  auth,
+  daemon,
+}) => (
   <div className="space-y-4">
+    {/* Project execution: the deliberate escape hatch from read-only commands. */}
+    <div className="pb-3 border-b border-white/[0.06]">
+      <label className="flex items-center justify-between text-xs text-ink-100 cursor-pointer py-1">
+        <span className="flex items-center gap-1.5 font-medium">
+          <TerminalSquare
+            className={`w-3.5 h-3.5 ${daemon.projectExecution ? 'text-warning-fg' : 'text-ink-400'}`}
+          />
+          <span>Let the agent build &amp; run</span>
+        </span>
+        <input
+          type="checkbox"
+          className="sr-only peer"
+          checked={daemon.projectExecution}
+          disabled={daemon.isSaving}
+          onChange={(e) => daemon.setProjectExecution(e.target.checked)}
+        />
+        <div className="w-7 h-4 bg-ink-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-warning/80 relative"></div>
+      </label>
+      <p className="text-[10px] leading-relaxed text-ink-400 mt-1">
+        {daemon.projectExecution
+          ? 'npm install, node, python, go test and similar can now run. These execute code from your project and its dependencies — keep this off unless you are actively building something.'
+          : 'Commands are limited to read-only inspection. Turn this on to let the agent install dependencies, run builds and run tests.'}
+      </p>
+    </div>
+
     {/* Daemon authentication */}
     {(auth.authRequired || auth.hasToken) && (
       <div className="pb-3 border-b border-white/[0.06]">

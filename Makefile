@@ -1,4 +1,4 @@
-.PHONY: build build-web sidecar desktop desktop-dev test test-go test-web vet lint format check clean run dev
+.PHONY: build build-web sidecar desktop desktop-mac desktop-dev version-check test test-go test-web vet lint format check clean run dev
 
 APP_NAME := agentui-daemon
 
@@ -24,6 +24,23 @@ desktop: sidecar
 
 desktop-dev: sidecar
 	cd web && npm run desktop:dev
+
+# Both macOS architectures, which is what a release ships for Mac users.
+desktop-mac: version-check
+	TAURI_TARGET_TRIPLE=aarch64-apple-darwin ./scripts/build-sidecar.sh
+	cd web && npx tauri build --target aarch64-apple-darwin
+	TAURI_TARGET_TRIPLE=x86_64-apple-darwin ./scripts/build-sidecar.sh
+	cd web && npx tauri build --target x86_64-apple-darwin
+
+# The three version fields must agree or the release artifacts are misnamed.
+version-check:
+	@pkg=$$(sed -n 's/.*"version": "\(.*\)",/\1/p' web/package.json | head -1); \
+	tauri=$$(sed -n 's/.*"version": "\(.*\)",/\1/p' web/src-tauri/tauri.conf.json | head -1); \
+	cargo=$$(sed -n 's/^version = "\(.*\)"/\1/p' web/src-tauri/Cargo.toml | head -1); \
+	if [ "$$pkg" != "$$tauri" ] || [ "$$pkg" != "$$cargo" ]; then \
+		echo "version mismatch: package.json=$$pkg tauri.conf.json=$$tauri Cargo.toml=$$cargo"; exit 1; \
+	fi; \
+	echo "version $$pkg is consistent across package.json, tauri.conf.json and Cargo.toml"
 
 test: test-go test-web
 

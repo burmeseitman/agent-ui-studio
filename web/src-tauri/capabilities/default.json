@@ -1,14 +1,22 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Lets the app launch and manage its bundled agentui-daemon sidecar.",
-  "windows": ["main"],
+  "description": "Lets the app launch its bundled daemon and open a native folder picker.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     {
       "identifier": "shell:allow-spawn",
-      "allow": [{ "name": "binaries/agentui-daemon", "sidecar": true }]
+      "allow": [
+        {
+          "name": "binaries/agentui-daemon",
+          "sidecar": true
+        }
+      ]
     },
-    "shell:allow-kill"
+    "shell:allow-kill",
+    "dialog:allow-open"
   ]
 }

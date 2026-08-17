@@ -8,9 +8,10 @@ import {
 import { CloudDetector } from '../utils/models';
 import { ChatSession } from '../services/sessions';
 import { SessionList } from './SessionList';
+import { WorkspacePicker, WorkspaceControls } from './WorkspacePicker';
 import { ModelSelector } from './ModelSelector';
 import { ToolsPanel } from './ToolsPanel';
-import { SettingsPanel, AuthControls } from './SettingsPanel';
+import { SettingsPanel, AuthControls, DaemonCapabilities } from './SettingsPanel';
 import {
   Terminal,
   FileText,
@@ -37,6 +38,8 @@ interface SidebarProps {
   readOnlyTools: Record<string, boolean>;
   isCloud: CloudDetector;
   auth: AuthControls;
+  daemon: DaemonCapabilities;
+  workspace: WorkspaceControls;
   sessions: ChatSession[];
   activeSessionId: string;
   onSelectSession: (id: string) => void;
@@ -46,12 +49,17 @@ interface SidebarProps {
 }
 
 const AVAILABLE_TOOLS = [
-  { id: 'execute_command', name: 'execute_command', desc: 'Run allowlisted read-only commands (no shell)' },
-  { id: 'read_file', name: 'read_file', desc: 'Read file contents from workspace' },
-  { id: 'write_file', name: 'write_file', desc: 'Create or update project files' },
-  { id: 'list_dir', name: 'list_dir', desc: 'Inspect directory tree & sizes' },
-  { id: 'fetch_url', name: 'fetch_url', desc: 'Extract clean markdown from public URLs' },
-  { id: 'analyze_readability', name: 'analyze_readability', desc: 'Compute Flesch scores & reading metrics' },
+  { id: 'list_tree', name: 'list_tree', desc: 'See the project structure at a glance' },
+  { id: 'search_files', name: 'search_files', desc: 'Find code by literal text, with file:line' },
+  { id: 'read_file', name: 'read_file', desc: 'Read a file in the workspace' },
+  { id: 'edit_file', name: 'edit_file', desc: 'Change part of a file, leaving the rest intact' },
+  { id: 'write_file', name: 'write_file', desc: 'Create a file or overwrite it entirely' },
+  { id: 'move_file', name: 'move_file', desc: 'Rename or move a file' },
+  { id: 'delete_file', name: 'delete_file', desc: 'Delete a file or empty folder' },
+  { id: 'list_dir', name: 'list_dir', desc: 'List one directory level' },
+  { id: 'execute_command', name: 'execute_command', desc: 'Run an allowlisted command (no shell)' },
+  { id: 'fetch_url', name: 'fetch_url', desc: 'Read a public web page as text' },
+  { id: 'analyze_readability', name: 'analyze_readability', desc: 'Flesch scores and reading time' },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -66,6 +74,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   readOnlyTools,
   isCloud,
   auth,
+  daemon,
+  workspace,
   sessions,
   activeSessionId,
   onSelectSession,
@@ -200,9 +210,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
+          {/* Section 1b: Where the agent's file tools point */}
+          <WorkspacePicker workspace={workspace} variant="panel" />
+
           {/* Section 2: Model selection */}
           <ModelSelector
             engines={engines}
+            profession={params.profession}
             selectedEngine={selectedEngine}
             selectedModel={selectedModel}
             onSelectModel={onSelectModel}
@@ -280,7 +294,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
 
             {activeTab === 'settings' && (
-              <SettingsPanel params={params} onChangeParams={onChangeParams} auth={auth} />
+              <SettingsPanel params={params} onChangeParams={onChangeParams} auth={auth} daemon={daemon} />
             )}
           </div>
         </div>

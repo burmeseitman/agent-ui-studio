@@ -325,3 +325,94 @@ func TestHealth_ReportsWhetherAuthIsRequired(t *testing.T) {
 		t.Fatal("health must stay reachable without a token")
 	}
 }
+
+func TestChatCompletions_RecoversToolCallsWrittenAsText(t *testing.T) {
+	// qwen2.5-coder:7b emits exactly this instead of a native tool call.
+	textCall := `{\"name\": \"analyze_readability\", \"arguments\": {\"text\": \"A short sentence.\"}}`
+
+	var calls int
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			_, _ = io.ReadAll(req.Body)
+			calls++
+
+			var ndjson string
+			if calls == 1 {
+				ndjson = `{"model":"c","message":{"role":"assistant","content":"` + textCall + `"},"done":false}` + "\n" +
+					`{"model":"c","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}` + "\n"
+			} else {
+				ndjson = `{"model":"c","message":{"role":"assistant","content":"Done."},"done":false}` + "\n" +
+					`{"model":"c","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}` + "\n"
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(ndjson)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	server := NewServer(nil, adapter.NewRouter(client, "http://mock-ollama:11434", ""))
+	body := `{"model":"c","engine":"ollama","tool_mode":"auto","enabled_tools":["analyze_readability"],` +
+		`"auto_approve_tools":["analyze_readability"],"messages":[{"role":"user","content":"analyze"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/completions", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	server.Handler().ServeHTTP(w, req)
+
+	out := w.Body.String()
+	if !strings.Contains(out, objectTextCalls) {
+		t.Fatalf("expected a text-tool-call recovery event:\n%s", out)
+	}
+	if !strings.Contains(out, objectToolResult) {
+		t.Fatalf("expected the recovered call to be executed:\n%s", out)
+	}
+	if calls != 2 {
+		t.Fatalf("expected the loop to continue after the recovered call, saw %d engine calls", calls)
+	}
+}
+
+func TestChatCompletions_DegradesWhenModelLacksToolSupport(t *testing.T) {
+	var sawTools []bool
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			raw, _ := io.ReadAll(req.Body)
+			sawTools = append(sawTools, strings.Contains(string(raw), `"tools"`))
+
+			if strings.Contains(string(raw), `"tools"`) {
+				return &http.Response{
+					StatusCode: http.StatusBadRequest,
+					Body:       io.NopCloser(strings.NewReader(`{"error":"registry.ollama.ai/library/starcoder2:3b does not support tools"}`)),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(
+					`{"model":"s","message":{"role":"assistant","content":"Plain answer."},"done":true}` + "\n")),
+				Header: make(http.Header),
+			}, nil
+		}),
+	}
+
+	server := NewServer(nil, adapter.NewRouter(client, "http://mock-ollama:11434", ""))
+	body := `{"model":"starcoder2:3b","engine":"ollama","enabled_tools":["read_file"],` +
+		`"messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/completions", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	server.Handler().ServeHTTP(w, req)
+
+	out := w.Body.String()
+	// A raw 400 is useless to the user; a plain answer plus an explanation is not.
+	if strings.Contains(out, "does not support tools") && !strings.Contains(out, objectNotice) {
+		t.Fatalf("expected the raw engine error to be replaced by a notice:\n%s", out)
+	}
+	if !strings.Contains(out, "Plain answer.") {
+		t.Fatalf("expected the retry without tools to produce an answer:\n%s", out)
+	}
+	if !strings.Contains(out, objectNotice) {
+		t.Fatalf("expected a notice explaining the model cannot use tools:\n%s", out)
+	}
+	if len(sawTools) != 2 || !sawTools[0] || sawTools[1] {
+		t.Fatalf("expected one attempt with tools then one without, got %v", sawTools)
+	}
+}

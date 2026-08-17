@@ -13,7 +13,23 @@ import (
 
 // maxToolIterations bounds the automatic tool loop so a model that keeps
 // requesting tools cannot spin forever.
-const maxToolIterations = 5
+//
+// A real coding task — orient, read, edit, build, fix — needs far more rounds
+// than a single question does, so the client can raise this up to the ceiling.
+const (
+	defaultToolIterations = 8
+	maxToolIterations     = 40
+)
+
+func resolveIterations(requested int) int {
+	if requested <= 0 {
+		return defaultToolIterations
+	}
+	if requested > maxToolIterations {
+		return maxToolIterations
+	}
+	return requested
+}
 
 // toolEvent is an out-of-band SSE payload describing tool activity. It is
 // distinguishable from model chunks by its object field.
@@ -30,7 +46,25 @@ type toolEvent struct {
 const (
 	objectToolStarted = "agentui.tool_started"
 	objectToolResult  = "agentui.tool_result"
+	objectTextCalls   = "agentui.text_tool_calls"
+	objectNotice      = "agentui.notice"
 )
+
+// noticeEvent surfaces a condition the user should know about but which is not
+// an error, such as a model that cannot use the tools it was offered.
+type noticeEvent struct {
+	Object  string `json:"object"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
+}
+
+// textCallRecovery tells the client that what streamed as message text was in
+// fact a tool call, along with the prose left once the JSON is removed.
+type textCallRecovery struct {
+	Object    string             `json:"object"`
+	Content   string             `json:"content"`
+	ToolCalls []adapter.ToolCall `json:"tool_calls"`
+}
 
 // resolveTools maps client-requested tool names onto registered schemas.
 // Unknown names are ignored rather than trusted, and an empty list disables
@@ -106,8 +140,10 @@ func (s *Server) runAgentLoop(
 	autoApproved := nameSet(req.AutoApproveTools)
 
 	messages := req.Messages
+	iterations := resolveIterations(req.MaxToolIterations)
+	warnedNoTools := false
 
-	for iteration := 0; iteration < maxToolIterations; iteration++ {
+	for iteration := 0; iteration < iterations; iteration++ {
 		turn := *req
 		turn.Messages = messages
 
@@ -117,6 +153,48 @@ func (s *Server) runAgentLoop(
 		if err != nil {
 			return err
 		}
+
+		if result.ToolsUnsupported && !warnedNoTools {
+			warnedNoTools = true
+			slog.Warn("model does not support tools; answered without them", "model", req.Model)
+			if err := emit(&noticeEvent{
+				Object: objectNotice,
+				Level:  "warning",
+				Message: fmt.Sprintf(
+					"%s cannot use tools, so it answered without them. Pick a tool-capable model such as qwen2.5-coder for agent work.",
+					req.Model),
+			}); err != nil {
+				return err
+			}
+		}
+
+		// Small local models frequently write a well-formed tool call into the
+		// message text instead of using the native channel. The intent is
+		// unambiguous, so recover it rather than letting the agent stall.
+		recoveredFromText := false
+		if len(result.ToolCalls) == 0 && len(offered) > 0 {
+			if recovered := adapter.ParseTextToolCalls(result.Content, func(name string) bool {
+				return offered[name]
+			}); len(recovered) > 0 {
+				slog.Info("recovered tool calls from message text",
+					"count", len(recovered), "model", req.Model)
+				result.ToolCalls = recovered
+				result.Content = adapter.StripToolCallText(result.Content, func(name string) bool {
+					return offered[name]
+				})
+				recoveredFromText = true
+
+				// Tell the client so it can replace the raw JSON it just streamed.
+				if err := emit(&textCallRecovery{
+					Object:    objectTextCalls,
+					Content:   result.Content,
+					ToolCalls: recovered,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+		_ = recoveredFromText
 
 		if len(result.ToolCalls) == 0 || !autoMode {
 			return nil
@@ -178,7 +256,9 @@ func (s *Server) runAgentLoop(
 		}
 	}
 
-	return fmt.Errorf("tool loop exceeded %d iterations without a final answer", maxToolIterations)
+	return fmt.Errorf(
+		"stopped after %d tool rounds without a final answer. Ask the model to continue if it was making progress",
+		iterations)
 }
 
 // executeToolCall validates and runs a single model-requested tool call.

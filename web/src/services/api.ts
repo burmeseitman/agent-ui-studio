@@ -83,6 +83,72 @@ export async function executeToolApi(
   return await res.json();
 }
 
+export interface WorkspaceInfo {
+  path: string;
+  entries?: string[];
+  /** True when the sandbox is the home directory, which is rarely intended. */
+  is_home_dir?: boolean;
+}
+
+/** The directory the daemon's file tools are confined to. */
+export async function fetchWorkspace(explicitBaseUrl?: string): Promise<WorkspaceInfo> {
+  const res = await fetch(`${daemonBaseUrl(explicitBaseUrl)}/api/v1/workspace`, {
+    headers: { Accept: 'application/json', ...getAuthHeaders() },
+    signal: AbortSignal.timeout(15000),
+  });
+  assertAuthorized(res);
+  if (!res.ok) {
+    throw new Error(`Failed to read workspace: HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+/** Repoints the file tools at another directory. */
+export async function setWorkspace(path: string, explicitBaseUrl?: string): Promise<WorkspaceInfo> {
+  const res = await fetch(`${daemonBaseUrl(explicitBaseUrl)}/api/v1/workspace`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ path }),
+    signal: AbortSignal.timeout(15000),
+  });
+  assertAuthorized(res);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return await res.json();
+}
+
+export interface DaemonSettings {
+  project_execution: boolean;
+  allowed_commands: string[];
+}
+
+export async function fetchSettings(explicitBaseUrl?: string): Promise<DaemonSettings> {
+  const res = await fetch(`${daemonBaseUrl(explicitBaseUrl)}/api/v1/settings`, {
+    headers: { Accept: 'application/json', ...getAuthHeaders() },
+    signal: AbortSignal.timeout(15000),
+  });
+  assertAuthorized(res);
+  if (!res.ok) throw new Error(`Failed to read settings: HTTP ${res.status}`);
+  return await res.json();
+}
+
+export async function updateSettings(
+  patch: { project_execution?: boolean },
+  explicitBaseUrl?: string
+): Promise<DaemonSettings> {
+  const res = await fetch(`${daemonBaseUrl(explicitBaseUrl)}/api/v1/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(patch),
+    signal: AbortSignal.timeout(15000),
+  });
+  assertAuthorized(res);
+  if (!res.ok) throw new Error(`Failed to update settings: HTTP ${res.status}`);
+  return await res.json();
+}
+
 /** A server-side tool execution event, emitted only in `auto` tool mode. */
 export interface ToolStreamEvent {
   object: 'agentui.tool_started' | 'agentui.tool_result';
@@ -91,6 +157,24 @@ export interface ToolStreamEvent {
   arguments: string;
   output?: string;
   error?: string;
+}
+
+/**
+ * Sent when the daemon recovered a tool call the model wrote as plain text.
+ * `content` is the prose with that JSON removed, so the client can replace what
+ * it already streamed.
+ */
+export interface TextToolCallEvent {
+  object: 'agentui.text_tool_calls';
+  content: string;
+  tool_calls: Array<{ id: string; function: { name: string; arguments: string } }>;
+}
+
+/** A condition worth telling the user about that is not a failure. */
+export interface NoticeEvent {
+  object: 'agentui.notice';
+  level: string;
+  message: string;
 }
 
 export interface StreamResult {
@@ -110,8 +194,13 @@ export interface StreamChatOptions {
   toolMode?: ToolMode;
   /** In auto mode, restricts unattended execution to these tools. */
   autoApproveTools?: string[];
+  /** Server-side tool rounds allowed for this request. */
+  maxToolIterations?: number;
   onChunk: (token: string, fullContent: string, stats: StreamStats) => void;
   onToolEvent?: (event: ToolStreamEvent) => void;
+  /** Replaces the visible message text after a text-mode tool call is recovered. */
+  onContentReplaced?: (content: string) => void;
+  onNotice?: (notice: NoticeEvent) => void;
   onError: (error: Error) => void;
   onDone: (result: StreamResult) => void;
 }
@@ -181,8 +270,11 @@ export function streamChatCompletion({
   enabledTools,
   toolMode = 'manual',
   autoApproveTools,
+  maxToolIterations,
   onChunk,
   onToolEvent,
+  onContentReplaced,
+  onNotice,
   onError,
   onDone,
 }: StreamChatOptions): () => void {
@@ -214,6 +306,7 @@ export function streamChatCompletion({
           enabled_tools: enabledTools,
           tool_mode: toolMode,
           auto_approve_tools: autoApproveTools,
+          max_tool_iterations: maxToolIterations,
           stream: true,
         }),
         signal: abortController.signal,
@@ -278,6 +371,18 @@ export function streamChatCompletion({
 
           if (parsed.object === 'agentui.tool_started' || parsed.object === 'agentui.tool_result') {
             onToolEvent?.(parsed as ToolStreamEvent);
+            continue;
+          }
+
+          if (parsed.object === 'agentui.text_tool_calls') {
+            // The JSON already streamed into the message; swap it for the prose.
+            accumulatedContent = parsed.content ?? '';
+            onContentReplaced?.(accumulatedContent);
+            continue;
+          }
+
+          if (parsed.object === 'agentui.notice') {
+            onNotice?.(parsed as NoticeEvent);
             continue;
           }
 

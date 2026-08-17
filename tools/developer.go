@@ -12,15 +12,6 @@ import (
 	"time"
 )
 
-// WorkspaceRoot is the root directory for sandboxed operations.
-var WorkspaceRoot string
-
-func init() {
-	if wd, err := os.Getwd(); err == nil {
-		WorkspaceRoot = wd
-	}
-}
-
 const (
 	commandTimeout    = 15 * time.Second
 	maxCommandOutput  = 10000
@@ -90,13 +81,9 @@ func sanitizeWorkspacePath(path string) (string, error) {
 		return "", fmt.Errorf("path cannot be empty")
 	}
 
-	workspaceRoot := WorkspaceRoot
+	workspaceRoot := Workspace()
 	if workspaceRoot == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("failed to determine workspace directory: %w", err)
-		}
-		workspaceRoot = wd
+		return "", fmt.Errorf("failed to determine workspace directory")
 	}
 	if resolved, err := filepath.EvalSymlinks(workspaceRoot); err == nil {
 		workspaceRoot = resolved
@@ -206,11 +193,13 @@ func ExecuteCommand(ctx context.Context, command string) (string, error) {
 	if err := checkCommandPolicy(argv); err != nil {
 		return "", err
 	}
-
-	workDir := WorkspaceRoot
-	if workDir == "" {
-		workDir, _ = os.Getwd()
+	// The allowlist says which programs may run; this says what they may touch.
+	// Without it `cat /etc/passwd` walks straight past the file sandbox.
+	if err := checkCommandPaths(argv); err != nil {
+		return "", err
 	}
+
+	workDir := Workspace()
 
 	execCtx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()

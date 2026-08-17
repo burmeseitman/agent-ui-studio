@@ -83,6 +83,9 @@ func (s *Scanner) Scan() []EngineInfo {
 				if probeInfo.Models != nil {
 					info.Models = probeInfo.Models
 				}
+				// Metadata is what lets the client pick a model per persona, so
+				// it must survive the copy into the result.
+				info.ModelDetails = probeInfo.ModelDetails
 			}
 
 			results[idx] = info

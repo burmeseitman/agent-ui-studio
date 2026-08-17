@@ -48,11 +48,23 @@ export interface ToolCallExecution {
   status: ToolCallStatus;
 }
 
+/** Engine-reported metadata about a model. Absent for engines that expose none. */
+export interface ModelDetail {
+  name: string;
+  /** e.g. ["completion", "tools", "insert"] — the authority on tool support. */
+  capabilities?: string[];
+  family?: string;
+  parameter_size?: string;
+  context_length?: number;
+  size_bytes?: number;
+}
+
 export interface EngineInfo {
   name: string;
   url: string;
   active: boolean;
   models: string[];
+  model_details?: ModelDetail[];
 }
 
 export interface EnginesResponse {
@@ -118,6 +130,11 @@ export const TOOL_APPROVAL_LABELS: Record<ToolApprovalPolicy, { label: string; h
 
 export interface ChatParams {
   profession: Profession;
+  /**
+   * Server-side tool rounds allowed per request. Agentic coding needs many more
+   * than a single question does.
+   */
+  maxToolIterations?: number;
   temperature: number;
   maxTokens: number;
   systemPrompt: string;
@@ -139,10 +156,33 @@ export const PROFESSION_PRESETS: Record<
     label: 'Developer',
     name: 'Developer',
     icon: '🧑‍💻',
-    description: 'Expert software engineer with terminal and file system access.',
-    defaultPrompt:
-      'You are an expert pair programmer in AgentUI Studio. Write clean, idiomatic code and explain root causes succinctly. Call the provided tools when you need to inspect the workspace rather than guessing at its contents.',
-    defaultTools: ['execute_command', 'read_file', 'write_file', 'list_dir', 'fetch_url'],
+    description: 'Coding agent with project-wide read, edit and search tools.',
+    // Written as an operating procedure rather than a persona: local models
+    // follow concrete rules about which tool to reach for far better than they
+    // follow adjectives about being a good engineer.
+    defaultPrompt: [
+      'You are a coding agent working directly in the user\'s project. You have tools; use them instead of guessing or asking the user to paste code.',
+      '',
+      'How to work:',
+      '1. Orient first. Call list_tree to see the project structure, and search_files to locate relevant code. Do not assume a file exists.',
+      '2. Read before you change. Always read_file a file before editing it.',
+      '3. Edit with edit_file, never write_file. edit_file replaces an exact snippet and leaves the rest of the file byte-for-byte intact. write_file overwrites the entire file and destroys anything you do not reproduce — only use it to create a genuinely new file.',
+      '4. For edit_file, copy old_string exactly from what you just read, including indentation, and include enough surrounding lines to make it unique.',
+      '5. Make one change at a time and check the result before moving on.',
+      '6. When you are done, say briefly what you changed and which files you touched.',
+      '',
+      'Write clean, idiomatic code that matches the surrounding style. Explain root causes concisely rather than narrating every step.',
+    ].join('\n'),
+    defaultTools: [
+      'list_tree',
+      'search_files',
+      'read_file',
+      'edit_file',
+      'write_file',
+      'list_dir',
+      'execute_command',
+      'fetch_url',
+    ],
   },
   writer: {
     label: 'Content Writer',

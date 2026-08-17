@@ -1,19 +1,27 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { EngineInfo } from '../types';
+import { EngineInfo, Profession } from '../types';
 import { createCloudDetector, isCloudModel } from '../utils/models';
+import { pickModelForProfession } from '../utils/modelRanking';
 import { fetchEngines } from '../services/api';
 
 /**
  * @param authReady false while the daemon needs a token we do not have yet, so
  * discovery does not poll out a stream of 401s behind the token prompt.
  */
-export function useEngines(authReady: boolean = true) {
+export function useEngines(authReady: boolean = true, profession: Profession = 'developer') {
   const [engines, setEngines] = useState<EngineInfo[]>([]);
   const [isLoadingEngines, setIsLoadingEngines] = useState(true);
   const [selectedEngine, setSelectedEngine] = useState<string>('');
   const [selectedModel, setSelectedModel] = useState<string>('');
 
   const selectedRef = useRef({ engine: '', model: '' });
+
+  // A persona change re-picks the default model; an explicit choice by the user
+  // is respected until they switch persona again.
+  const userPickedRef = useRef(false);
+  const professionRef = useRef(profession);
+  const enginesRef = useRef<EngineInfo[]>([]);
+  enginesRef.current = engines;
 
   useEffect(() => {
     selectedRef.current = { engine: selectedEngine, model: selectedModel };
@@ -33,9 +41,13 @@ export function useEngines(authReady: boolean = true) {
           (e) => e.name === engine && e.models.includes(model)
         );
         if (!hasCurrentValid) {
-          const first = activeEngines[0];
-          setSelectedEngine(first.name);
-          setSelectedModel(first.models[0]);
+          // Fall back to the first model only if nothing scores as suitable.
+          const best =
+            pickModelForProfession(detected, professionRef.current) ??
+            { engine: activeEngines[0].name, model: activeEngines[0].models[0] };
+          setSelectedEngine(best.engine);
+          setSelectedModel(best.model);
+          userPickedRef.current = false;
         }
       }
     } catch (err: any) {
@@ -81,10 +93,24 @@ export function useEngines(authReady: boolean = true) {
   // Bound to the discovered engines so callers can classify by engine name.
   const isCloud = useMemo(() => createCloudDetector(engines), [engines]);
 
-  const handleSelectModel = (engineName: string, modelName: string) => {
+  const handleSelectModel = useCallback((engineName: string, modelName: string) => {
+    userPickedRef.current = true;
     setSelectedEngine(engineName);
     setSelectedModel(modelName);
-  };
+  }, []);
+
+  // Re-default when the persona changes: a coding persona wants a coding model.
+  useEffect(() => {
+    if (professionRef.current === profession) return;
+    professionRef.current = profession;
+    userPickedRef.current = false;
+
+    const best = pickModelForProfession(enginesRef.current, profession);
+    if (best) {
+      setSelectedEngine(best.engine);
+      setSelectedModel(best.model);
+    }
+  }, [profession]);
 
   return {
     engines,

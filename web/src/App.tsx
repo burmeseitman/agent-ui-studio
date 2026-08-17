@@ -10,6 +10,8 @@ import { useEngines } from './hooks/useEngines';
 import { useSessions } from './hooks/useSessions';
 import { useAuth } from './hooks/useAuth';
 import { useTools } from './hooks/useTools';
+import { useWorkspace } from './hooks/useWorkspace';
+import { useDaemonSettings } from './hooks/useDaemonSettings';
 import { useChat } from './hooks/useChat';
 
 export const App: React.FC = () => {
@@ -47,6 +49,8 @@ export const App: React.FC = () => {
     commitMessages,
   } = useSessions();
   const { readOnlyTools } = useTools(params.profession, auth.ready);
+  const workspace = useWorkspace(auth.ready);
+  const daemon = useDaemonSettings(auth.ready);
 
   const {
     engines,
@@ -57,7 +61,7 @@ export const App: React.FC = () => {
     loadEngines,
     handleSelectModel,
     isCloud,
-  } = useEngines(auth.ready);
+  } = useEngines(auth.ready, params.profession);
 
   const {
     messages,
@@ -77,6 +81,8 @@ export const App: React.FC = () => {
     handleSelectModel,
     readOnlyTools,
     isCloud,
+    workspacePath: workspace.workspacePath,
+    workspaceEntries: workspace.entries,
     sessionId: activeId,
     sessionMessages: activeSession?.messages ?? [],
     onCommitMessages: commitMessages,
@@ -135,6 +141,8 @@ export const App: React.FC = () => {
           readOnlyTools={readOnlyTools}
           isCloud={isCloud}
           auth={auth}
+          daemon={daemon}
+          workspace={workspace}
           sessions={sessions}
           activeSessionId={activeId}
           onSelectSession={selectSession}
@@ -160,6 +168,8 @@ export const App: React.FC = () => {
             onApproveToolCalls={handleApproveToolCalls}
             onDenyToolCalls={handleDenyToolCalls}
             isCloud={isCloud}
+            workspace={workspace}
+            showWorkspace={params.enabledTools.length > 0}
           />
 
           {/* Bottom Speedometer Stats Bar */}

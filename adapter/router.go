@@ -69,12 +69,34 @@ func (r *Router) Stream(ctx context.Context, req *ChatCompletionRequest, handler
 		engineName = "ollama"
 	}
 
-	switch engineName {
-	case "ollama":
-		return StreamOllama(ctx, r.client, r.OllamaURL, req, handler)
-	case "lmstudio", "lm_studio", "lm-studio", "openai", "vllm":
-		return StreamOpenAICompat(ctx, r.client, r.LMStudioURL, req, handler)
-	default:
-		return nil, fmt.Errorf("unsupported engine: %q (supported: ollama, lmstudio, lm_studio, lm-studio, openai, vllm)", req.Engine)
+	stream := func(request *ChatCompletionRequest) (*StreamResult, error) {
+		switch engineName {
+		case "ollama":
+			return StreamOllama(ctx, r.client, r.OllamaURL, request, handler)
+		case "lmstudio", "lm_studio", "lm-studio", "openai", "vllm":
+			return StreamOpenAICompat(ctx, r.client, r.LMStudioURL, request, handler)
+		default:
+			return nil, fmt.Errorf("unsupported engine: %q (supported: ollama, lmstudio, lm_studio, lm-studio, openai, vllm)", req.Engine)
+		}
 	}
+
+	result, err := stream(req)
+
+	// Base and completion-only models reject a request that carries tools at
+	// all. Retrying without them turns a dead end into a plain answer, which is
+	// far more useful than surfacing a raw 400.
+	if err != nil && len(req.Tools) > 0 && IsToolsUnsupported(err) {
+		withoutTools := *req
+		withoutTools.Tools = nil
+		retried, retryErr := stream(&withoutTools)
+		if retryErr != nil {
+			return nil, err
+		}
+		if retried != nil {
+			retried.ToolsUnsupported = true
+		}
+		return retried, nil
+	}
+
+	return result, err
 }

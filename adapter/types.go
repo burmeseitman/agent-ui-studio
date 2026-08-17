@@ -52,6 +52,9 @@ type ChatCompletionRequest struct {
 	EnabledTools []string `json:"enabled_tools,omitempty"`
 	// ToolMode selects manual (default) or automatic tool execution.
 	ToolMode string `json:"tool_mode,omitempty"`
+	// MaxToolIterations raises the server-side tool loop budget for agentic
+	// work. Zero uses the default; the server clamps the upper bound.
+	MaxToolIterations int `json:"max_tool_iterations,omitempty"`
 	// AutoApproveTools narrows automatic execution to specific tools. In auto
 	// mode an omitted list means every enabled tool may run unattended; a
 	// present list means anything outside it pauses for user approval.
@@ -106,6 +109,9 @@ type StreamResult struct {
 	ToolCalls    []ToolCall
 	FinishReason string
 	Usage        *Usage
+	// ToolsUnsupported is set when the engine refused the request because the
+	// model cannot do tool calling, and it was retried as a plain chat.
+	ToolsUnsupported bool
 }
 
 // ToolCallAccumulator reassembles tool calls that arrive as indexed deltas.

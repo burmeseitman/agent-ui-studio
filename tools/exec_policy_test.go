@@ -159,9 +159,11 @@ func TestSecurity_SymlinkEscapeBlocked(t *testing.T) {
 		t.Fatalf("setup failed: %v", err)
 	}
 
-	originalRoot := WorkspaceRoot
-	WorkspaceRoot = workspace
-	t.Cleanup(func() { WorkspaceRoot = originalRoot })
+	originalRoot := Workspace()
+	if _, err := SetWorkspace(workspace); err != nil {
+		t.Fatalf("failed to set workspace: %v", err)
+	}
+	t.Cleanup(func() { _, _ = SetWorkspace(originalRoot) })
 
 	// A symlink to a file outside the workspace.
 	if err := os.Symlink(secretPath, filepath.Join(workspace, "leak.txt")); err != nil {
@@ -201,9 +203,11 @@ func TestSecurity_SymlinkEscapeBlocked(t *testing.T) {
 
 func TestSecurity_SensitivePathsBlocked(t *testing.T) {
 	workspace := t.TempDir()
-	originalRoot := WorkspaceRoot
-	WorkspaceRoot = workspace
-	t.Cleanup(func() { WorkspaceRoot = originalRoot })
+	originalRoot := Workspace()
+	if _, err := SetWorkspace(workspace); err != nil {
+		t.Fatalf("failed to set workspace: %v", err)
+	}
+	t.Cleanup(func() { _, _ = SetWorkspace(originalRoot) })
 
 	for _, path := range []string{
 		".env",

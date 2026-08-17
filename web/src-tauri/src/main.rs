@@ -78,6 +78,7 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(config.clone())
         .manage(DaemonProcess::default())
         .invoke_handler(tauri::generate_handler![daemon_config])

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from
 import { ChatMessage, ProfessionType, PROFESSION_PRESETS } from '../types';
 import { CloudDetector } from '../utils/models';
 import { MessageItem } from './MessageItem';
+import { WorkspacePicker, WorkspaceControls } from './WorkspacePicker';
 import {
   Send,
   Square,
@@ -29,6 +30,9 @@ interface ChatViewProps {
   onApproveToolCalls: (messageId: string) => void;
   onDenyToolCalls: (messageId: string) => void;
   isCloud: CloudDetector;
+  workspace: WorkspaceControls;
+  /** File tools only matter when some are enabled. */
+  showWorkspace: boolean;
 }
 
 const STARTER_PROMPTS: Record<
@@ -140,6 +144,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   onApproveToolCalls,
   onDenyToolCalls,
   isCloud,
+  workspace,
+  showWorkspace,
 }) => {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -215,6 +221,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 )}
               </p>
 
+              {showWorkspace && (
+                <div className="mb-6">
+                  <div className="text-2xs font-medium uppercase tracking-widest text-ink-500 mb-2 text-left">
+                    Working folder
+                  </div>
+                  <WorkspacePicker workspace={workspace} variant="hero" />
+                </div>
+              )}
+
               <div className="text-2xs font-medium uppercase tracking-widest text-ink-500 mb-3 text-left">
                 Try one of these
               </div>
@@ -289,6 +304,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
       {/* Composer */}
       <div className="px-5 pb-5 pt-2 shrink-0">
         <div className="max-w-3xl mx-auto">
+          {showWorkspace && messages.length > 0 && (
+            <WorkspacePicker workspace={workspace} variant="bar" />
+          )}
           <div className="rounded-xl border border-white/[0.08] bg-surface-raised shadow-composer transition-colors duration-150 focus-within:border-accent/45">
             <textarea
               ref={textareaRef}
