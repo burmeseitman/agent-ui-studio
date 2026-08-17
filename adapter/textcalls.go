@@ -227,3 +227,57 @@ func IsToolsUnsupported(err error) bool {
 	}
 	return false
 }
+
+// LooksLikeAttemptedToolCall reports whether the text appears to be a tool call
+// the model failed to encode correctly.
+//
+// Small models routinely emit invalid JSON — most often an unescaped quote
+// inside HTML they are writing to a file. Nothing can be recovered from that,
+// but staying silent is the worst outcome: the tool never runs, the model gets
+// no error, and it goes on to tell the user the work is done.
+func LooksLikeAttemptedToolCall(content string, isKnown func(string) bool) bool {
+	if isKnown == nil || strings.TrimSpace(content) == "" {
+		return false
+	}
+	// Something already parsed cleanly is not a failed attempt.
+	if len(ParseTextToolCalls(content, isKnown)) > 0 {
+		return false
+	}
+
+	lower := strings.ToLower(content)
+	// The shape of a call: a name field, an arguments field, and a tool we offered.
+	hasNameField := strings.Contains(lower, `"name"`) || strings.Contains(lower, "'name'")
+	hasArgsField := strings.Contains(lower, `"arguments"`) ||
+		strings.Contains(lower, `"parameters"`) ||
+		strings.Contains(lower, "<tool_call>")
+	if !hasNameField && !hasArgsField {
+		return false
+	}
+
+	for _, candidate := range jsonCandidates(content) {
+		var probe struct {
+			Name string `json:"name"`
+		}
+		// Even unparseable blobs usually have a readable name near the start.
+		if err := json.Unmarshal([]byte(candidate), &probe); err == nil && isKnown(probe.Name) {
+			return true
+		}
+	}
+
+	// Fall back to looking for a known tool name quoted as a value.
+	for _, marker := range []string{`"name": "`, `"name":"`} {
+		idx := strings.Index(content, marker)
+		for idx >= 0 {
+			rest := content[idx+len(marker):]
+			if end := strings.IndexByte(rest, '"'); end > 0 && isKnown(rest[:end]) {
+				return true
+			}
+			next := strings.Index(rest, marker)
+			if next < 0 {
+				break
+			}
+			idx = idx + len(marker) + next
+		}
+	}
+	return false
+}

@@ -416,3 +416,76 @@ func TestChatCompletions_DegradesWhenModelLacksToolSupport(t *testing.T) {
 		t.Fatalf("expected one attempt with tools then one without, got %v", sawTools)
 	}
 }
+
+func TestChatCompletions_MalformedToolCallIsSurfacedAndRetried(t *testing.T) {
+	// A model writing HTML into a file routinely emits an unescaped quote, which
+	// makes the whole tool call unparseable. Previously nothing ran, the model
+	// received no error, and it told the user the file had been created.
+	malformed := `{\"name\": \"write_file\", \"arguments\": {\"path\": \"a.html\", \"content\": \"<button class=\"b\">x</button>\"}}`
+
+	var calls int
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			_, _ = io.ReadAll(req.Body)
+			calls++
+
+			var content string
+			if calls == 1 {
+				content = malformed
+			} else {
+				content = "Understood, the file is written."
+			}
+			ndjson := `{"model":"c","message":{"role":"assistant","content":"` + content + `"},"done":false}` + "\n" +
+				`{"model":"c","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}` + "\n"
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(ndjson)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	server := NewServer(nil, adapter.NewRouter(client, "http://mock-ollama:11434", ""))
+	body := `{"model":"c","engine":"ollama","tool_mode":"auto","enabled_tools":["write_file"],` +
+		`"auto_approve_tools":["write_file"],"messages":[{"role":"user","content":"make a page"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/completions", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	server.Handler().ServeHTTP(w, req)
+
+	out := w.Body.String()
+	if !strings.Contains(out, objectNotice) {
+		t.Fatalf("a malformed tool call must be reported to the user:\n%s", out)
+	}
+	if calls < 2 {
+		t.Fatalf("expected the model to be given a chance to correct itself, saw %d calls", calls)
+	}
+}
+
+func TestChatCompletions_ProseIsNotMistakenForAToolCall(t *testing.T) {
+	// The retry must not fire on ordinary answers, or every reply would loop.
+	var calls int
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			_, _ = io.ReadAll(req.Body)
+			calls++
+			ndjson := `{"model":"c","message":{"role":"assistant","content":"A goroutine is a lightweight thread."},"done":true,"done_reason":"stop"}` + "\n"
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(ndjson)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	server := NewServer(nil, adapter.NewRouter(client, "http://mock-ollama:11434", ""))
+	body := `{"model":"c","engine":"ollama","tool_mode":"auto","enabled_tools":["write_file"],` +
+		`"messages":[{"role":"user","content":"what is a goroutine"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/completions", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+	server.Handler().ServeHTTP(w, req)
+
+	if calls != 1 {
+		t.Fatalf("a plain answer must not trigger a retry, saw %d calls", calls)
+	}
+}

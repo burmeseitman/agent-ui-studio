@@ -21,6 +21,10 @@ const (
 	maxToolIterations     = 40
 )
 
+// A model that cannot encode a tool call will usually fail the same way twice;
+// beyond that, retrying just burns the loop budget.
+const maxMalformedRetries = 2
+
 func resolveIterations(requested int) int {
 	if requested <= 0 {
 		return defaultToolIterations
@@ -142,6 +146,7 @@ func (s *Server) runAgentLoop(
 	messages := req.Messages
 	iterations := resolveIterations(req.MaxToolIterations)
 	warnedNoTools := false
+	malformedRetries := 0
 
 	for iteration := 0; iteration < iterations; iteration++ {
 		turn := *req
@@ -195,6 +200,34 @@ func (s *Server) runAgentLoop(
 			}
 		}
 		_ = recoveredFromText
+
+		// A tool call the model failed to encode correctly must not pass in
+		// silence: nothing runs, the model sees no error, and it goes on to
+		// claim the work is done. Tell the user, and hand the model the failure
+		// so it can try again properly.
+		if len(result.ToolCalls) == 0 && autoMode && malformedRetries < maxMalformedRetries &&
+			adapter.LooksLikeAttemptedToolCall(result.Content, func(name string) bool { return offered[name] }) {
+
+			malformedRetries++
+			slog.Warn("model emitted a malformed tool call", "model", req.Model, "attempt", malformedRetries)
+
+			if err := emit(&noticeEvent{
+				Object: objectNotice,
+				Level:  "warning",
+				Message: "The model tried to call a tool but wrote it in a form the daemon could not read, " +
+					"so nothing ran. Asking it to try again.",
+			}); err != nil {
+				return err
+			}
+
+			messages = append(messages,
+				adapter.ChatMessage{Role: "assistant", Content: result.Content},
+				adapter.ChatMessage{Role: "user", Content: "That tool call was malformed and did not run, " +
+					"so nothing has changed on disk. Call the tool again using the proper tool-calling " +
+					"format. If you are writing a file, make sure every quote inside the content is " +
+					"escaped correctly, and write one file per call."})
+			continue
+		}
 
 		if len(result.ToolCalls) == 0 || !autoMode {
 			return nil
