@@ -167,4 +167,21 @@ describe('streamChatCompletion', () => {
     const body = JSON.parse((stub.mock.calls[0] as any)[1].body);
     expect(body.tool_mode).toBe('manual');
   });
+
+  it('accumulates tool calls recovered from text events', async () => {
+    mockSSE(
+      'data: {"choices":[{"delta":{"content":"I will write the file"}}]}\n\n' +
+        'data: {"object":"agentui.text_tool_calls","content":"Created calculator","tool_calls":[{"id":"call_1","type":"function","function":{"name":"write_file","arguments":"{\\"path\\":\\"calculator.html\\"}"}}]}\n\n' +
+        'data: [DONE]\n\n'
+    );
+
+    const { result } = await run();
+    expect(result.content).toBe('Created calculator');
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]).toEqual({
+      id: 'call_1',
+      name: 'write_file',
+      arguments: '{"path":"calculator.html"}',
+    });
+  });
 });

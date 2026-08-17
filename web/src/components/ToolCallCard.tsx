@@ -36,6 +36,31 @@ const MUTATING_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'move_
 /** Tools whose pending arguments are best reviewed as a diff. */
 const DIFF_TOOLS = new Set(['write_file', 'edit_file']);
 
+/** Extracts a readable summary for card headers from raw JSON arguments. */
+function getToolCallSummary(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.path) {
+      return parsed.path;
+    }
+    if (parsed.command) {
+      return parsed.command;
+    }
+    if (parsed.query) {
+      return `"${parsed.query}"`;
+    }
+    if (parsed.url) {
+      return parsed.url;
+    }
+    if (parsed.from && parsed.to) {
+      return `${parsed.from} → ${parsed.to}`;
+    }
+  } catch {
+    // Fall back to raw string
+  }
+  return raw;
+}
+
 /** Renders raw JSON arguments readably, falling back to the original string. */
 function formatArguments(raw: string): string {
   try {
@@ -115,8 +140,8 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = React.memo(({ toolCall,
             <span className="font-semibold text-ink-100 truncate">
               {toolCall.toolName}
             </span>
-            <span className="text-[10px] text-ink-400 truncate max-w-[200px] opacity-75">
-              {toolCall.arguments}
+            <span className="text-[10px] text-ink-400 truncate max-w-[280px] opacity-75">
+              {getToolCallSummary(toolCall.arguments)}
             </span>
           </div>
         </div>

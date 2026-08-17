@@ -378,6 +378,9 @@ export function streamChatCompletion({
             // The JSON already streamed into the message; swap it for the prose.
             accumulatedContent = parsed.content ?? '';
             onContentReplaced?.(accumulatedContent);
+            for (const call of parsed.tool_calls ?? []) {
+              toolCalls.add(call);
+            }
             continue;
           }
 

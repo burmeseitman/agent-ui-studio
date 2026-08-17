@@ -10,6 +10,8 @@ import {
   Cpu,
   User,
   Terminal,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface MessageItemProps {
@@ -30,6 +32,9 @@ function escapeHtml(text: string): string {
 
 const CodeBlock: React.FC<{ language?: string; code: string }> = ({ language, code }) => {
   const [copied, setCopied] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const lines = code.split('\n');
+  const isLong = lines.length > 15;
 
   const handleCopy = () => {
     try {
@@ -68,34 +73,68 @@ const CodeBlock: React.FC<{ language?: string; code: string }> = ({ language, co
           <span className="text-[11px] font-medium text-ink-200">
             {language || 'plaintext'}
           </span>
+          <span className="text-[10px] text-ink-500">({lines.length} lines)</span>
         </div>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className="flex items-center space-x-1 px-2 py-0.5 text-[10px] text-ink-400 hover:text-ink-100 hover:bg-white/[0.06] rounded transition-colors"
-          title="Copy code"
-        >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3 text-success-fg" />
-              <span className="text-success-fg">Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" />
-              <span>Copy</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center space-x-1.5">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="flex items-center space-x-1 px-2 py-0.5 text-[10px] text-ink-400 hover:text-ink-100 hover:bg-white/[0.06] rounded transition-colors"
+            title="Copy code"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3 h-3 text-success-fg" />
+                <span className="text-success-fg">Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3 h-3" />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Code contents */}
-      <div className="p-3.5 overflow-x-auto">
-        <pre className="text-ink-100 leading-relaxed font-mono">
-          <code
-            dangerouslySetInnerHTML={{ __html: highlightedCode }}
-          />
-        </pre>
+      {/* Code contents with collapsible container for long blocks */}
+      <div className="relative">
+        <div
+          className={`p-3.5 overflow-x-auto transition-all ${
+            isLong && !isExpanded ? 'max-h-56 overflow-y-hidden' : ''
+          }`}
+        >
+          <pre className="text-ink-100 leading-relaxed font-mono">
+            <code dangerouslySetInnerHTML={{ __html: highlightedCode }} />
+          </pre>
+        </div>
+
+        {/* Expand / Collapse toggle overlay */}
+        {isLong && (
+          <div
+            className={`flex items-center justify-center p-1.5 bg-surface-base/95 border-t border-white/[0.04] ${
+              !isExpanded ? 'pt-4 bg-gradient-to-t from-surface-base via-surface-base/90 to-transparent' : ''
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="flex items-center space-x-1.5 px-3 py-1 rounded text-[11px] font-medium text-ink-300 hover:text-ink-100 hover:bg-white/[0.06] transition-colors"
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5" />
+                  <span>Collapse code</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                  <span>Expand full code ({lines.length} lines)</span>
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

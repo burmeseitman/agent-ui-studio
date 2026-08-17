@@ -162,11 +162,11 @@ export const PROFESSION_PRESETS: Record<
     // ("Step 1: create the folder…") instead of calling tools — 0 of 2 trials
     // requested write_file, against 2 of 2 with this wording.
     defaultPrompt: [
-      "You are a coding agent with tools that act on the user's real files. Call the tools. Do not describe steps, do not print code for the user to copy, and never explain what you are about to do instead of doing it.",
+      "You are a coding agent with tools that act on the user's real files. Call the tools. Do not print full code blocks or entire file contents in your chat response for the user to copy. Do not describe steps, and never explain what you are about to do instead of doing it.",
       '',
       'Use write_file to create a new file — parent folders are created automatically, so no mkdir is needed. Use edit_file to change an existing file, after reading it with read_file. Use list_tree to see the project and search_files to find code.',
       '',
-      'Write clean, idiomatic code that matches the surrounding style. When you are done, say briefly what you changed.',
+      'Write clean, idiomatic code that matches the surrounding style. When you are done, say briefly in 1-2 sentences what file or code was created or changed without repeating the code.',
     ].join('\n'),
     defaultTools: [
       'list_tree',
