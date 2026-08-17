@@ -419,7 +419,10 @@ export function useChat({
       const { toolMode, autoApproveTools } = params
         ? resolveToolMode(params, readOnlyToolsRef.current)
         : { toolMode: 'manual' as const, autoApproveTools: undefined };
-      const autoMode = toolMode === 'auto';
+      // Which calls the daemon actually ran. In auto mode it executes only the
+      // approved tools and hands the rest back, so "auto" does not imply
+      // "everything ran" — anything missing from here still needs the user.
+      const executedCallIds = new Set<string>();
 
       const abortFn = streamChatCompletion({
         engine: engineToUse,
@@ -463,6 +466,7 @@ export function useChat({
                   ? 'error'
                   : 'success',
           };
+          executedCallIds.add(event.tool_call_id);
           const existing = messagesRef.current.find((m) => m.id === assistantMsgId)?.toolCalls ?? [];
           const next = existing.some((c) => c.id === execution.id)
             ? existing.map((c) => (c.id === execution.id ? { ...c, ...execution } : c))
@@ -498,19 +502,26 @@ export function useChat({
         onDone: ({ content, toolCalls, stats }) => {
           dispatch({ type: 'SET_STATS', stats });
 
-          // In manual mode, surface the requested calls for approval instead of
-          // running them. In auto mode the daemon already executed them and the
-          // results arrived via onToolEvent.
-          if (!autoMode && toolCalls.length > 0) {
+          // Anything the daemon returned but did not run is waiting on the
+          // user. Under the default policy that is every write: the model calls
+          // write_file, the daemon withholds it, and without this the request
+          // vanished silently — no file, no approval prompt, nothing.
+          const pending = toolCalls.filter((call: StreamToolCall) => !executedCallIds.has(call.id));
+
+          if (pending.length > 0) {
+            const already = messagesRef.current.find((m) => m.id === assistantMsgId)?.toolCalls ?? [];
             dispatch({
               type: 'SET_TOOL_CALLS',
               id: assistantMsgId,
-              toolCalls: toolCalls.map((call: StreamToolCall) => ({
-                id: call.id,
-                toolName: call.name,
-                arguments: call.arguments,
-                status: 'pending' as const,
-              })),
+              toolCalls: [
+                ...already,
+                ...pending.map((call: StreamToolCall) => ({
+                  id: call.id,
+                  toolName: call.name,
+                  arguments: call.arguments,
+                  status: 'pending' as const,
+                })),
+              ],
             });
           }
 

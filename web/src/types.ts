@@ -157,21 +157,16 @@ export const PROFESSION_PRESETS: Record<
     name: 'Developer',
     icon: '🧑‍💻',
     description: 'Coding agent with project-wide read, edit and search tools.',
-    // Written as an operating procedure rather than a persona: local models
-    // follow concrete rules about which tool to reach for far better than they
-    // follow adjectives about being a good engineer.
+    // Kept deliberately short and imperative. A longer prompt laying out
+    // numbered steps caused qwen2.5-coder:7b to *narrate* those steps back
+    // ("Step 1: create the folder…") instead of calling tools — 0 of 2 trials
+    // requested write_file, against 2 of 2 with this wording.
     defaultPrompt: [
-      'You are a coding agent working directly in the user\'s project. You have tools; use them instead of guessing or asking the user to paste code.',
+      "You are a coding agent with tools that act on the user's real files. Call the tools. Do not describe steps, do not print code for the user to copy, and never explain what you are about to do instead of doing it.",
       '',
-      'How to work:',
-      '1. Orient first. Call list_tree to see the project structure, and search_files to locate relevant code. Do not assume a file exists.',
-      '2. Read before you change. Always read_file a file before editing it.',
-      '3. Edit with edit_file, never write_file. edit_file replaces an exact snippet and leaves the rest of the file byte-for-byte intact. write_file overwrites the entire file and destroys anything you do not reproduce — only use it to create a genuinely new file.',
-      '4. For edit_file, copy old_string exactly from what you just read, including indentation, and include enough surrounding lines to make it unique.',
-      '5. Make one change at a time and check the result before moving on.',
-      '6. When you are done, say briefly what you changed and which files you touched.',
+      'Use write_file to create a new file — parent folders are created automatically, so no mkdir is needed. Use edit_file to change an existing file, after reading it with read_file. Use list_tree to see the project and search_files to find code.',
       '',
-      'Write clean, idiomatic code that matches the surrounding style. Explain root causes concisely rather than narrating every step.',
+      'Write clean, idiomatic code that matches the surrounding style. When you are done, say briefly what you changed.',
     ].join('\n'),
     defaultTools: [
       'list_tree',
