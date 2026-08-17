@@ -12,6 +12,7 @@ import {
   Terminal,
   ChevronDown,
   ChevronUp,
+  Eye,
 } from 'lucide-react';
 
 interface MessageItemProps {
@@ -19,6 +20,8 @@ interface MessageItemProps {
   modelName?: string;
   onApproveToolCalls?: (messageId: string) => void;
   onDenyToolCalls?: (messageId: string) => void;
+  onOpenPreview?: (filePath: string) => void;
+  onOpenRawPreview?: (htmlCode: string) => void;
 }
 
 /** Highlighting failures must not inject raw code into innerHTML. */
@@ -30,7 +33,11 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-const CodeBlock: React.FC<{ language?: string; code: string }> = ({ language, code }) => {
+const CodeBlock: React.FC<{
+  language?: string;
+  code: string;
+  onOpenRawPreview?: (htmlCode: string) => void;
+}> = ({ language, code, onOpenRawPreview }) => {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const lines = code.split('\n');
@@ -76,6 +83,17 @@ const CodeBlock: React.FC<{ language?: string; code: string }> = ({ language, co
           <span className="text-[10px] text-ink-500">({lines.length} lines)</span>
         </div>
         <div className="flex items-center space-x-1.5">
+          {(language === 'html' || language === 'htm') && onOpenRawPreview && (
+            <button
+              type="button"
+              onClick={() => onOpenRawPreview(code)}
+              className="flex items-center space-x-1 px-2 py-0.5 text-[10px] text-accent-fg hover:bg-accent/10 rounded transition-colors"
+              title="Preview HTML"
+            >
+              <Eye className="w-3 h-3" />
+              <span>Preview</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleCopy}
@@ -145,6 +163,8 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   modelName,
   onApproveToolCalls,
   onDenyToolCalls,
+  onOpenPreview,
+  onOpenRawPreview,
 }) => {
   const isUser = message.role === 'user';
   const [copiedAll, setCopiedAll] = useState(false);
@@ -155,7 +175,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
       setCopiedAll(true);
       setTimeout(() => setCopiedAll(false), 2000);
     } catch {
-      // Ignore
+      // Fallback or ignore
     }
   };
 
@@ -165,21 +185,26 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
   });
 
   return (
-    <div className="group relative py-4 first:pt-2">
-      {/* Top Meta Bar */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2.5">
+    <div
+      className={`group relative py-3.5 px-3 sm:px-4 rounded-xl transition-colors duration-150 ${
+        isUser
+          ? 'bg-transparent'
+          : 'bg-surface-canvas/50 hover:bg-surface-canvas/80 border border-white/[0.03]'
+      }`}
+    >
+      {/* Header info */}
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center space-x-2.5">
           <div
-            className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+            className={`w-6 h-6 rounded-md flex items-center justify-center text-xs shadow-sm ${
               isUser
-                ? 'bg-white/[0.06] text-ink-300 border border-white/[0.08]'
-                : 'bg-gradient-to-br from-accent to-accent-active text-white shadow-subtle'
+                ? 'bg-surface-raised border border-white/[0.08] text-ink-200'
+                : 'bg-accent/15 border border-accent/25 text-accent-fg'
             }`}
           >
-            {isUser ? <User className="w-3 h-3" /> : <Cpu className="w-3 h-3" />}
+            {isUser ? <User className="w-3.5 h-3.5" /> : <Cpu className="w-3.5 h-3.5" />}
           </div>
-
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline space-x-2">
             <span className="text-xs font-semibold text-ink-100">
               {isUser ? 'You' : modelName || 'Agent'}
             </span>
@@ -219,6 +244,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
               toolCall={tc}
               onApprove={onApproveToolCalls ? () => onApproveToolCalls(message.id) : undefined}
               onDeny={onDenyToolCalls ? () => onDenyToolCalls(message.id) : undefined}
+              onOpenPreview={onOpenPreview}
             />
           ))}
         </div>
@@ -230,7 +256,7 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              code({ node, inline, className, children, ...props }: any) {
+              code({ node: _node, inline, className, children, ...props }: any) {
                 const match = /language-(\w+)/.exec(className || '');
                 const codeString = String(children).replace(/\n$/, '');
 
@@ -239,12 +265,18 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
                     <CodeBlock
                       language={match[1]}
                       code={codeString}
+                      onOpenRawPreview={onOpenRawPreview}
                     />
                   );
                 }
 
                 if (!inline && !match && codeString.includes('\n')) {
-                  return <CodeBlock code={codeString} />;
+                  return (
+                    <CodeBlock
+                      code={codeString}
+                      onOpenRawPreview={onOpenRawPreview}
+                    />
+                  );
                 }
 
                 return (

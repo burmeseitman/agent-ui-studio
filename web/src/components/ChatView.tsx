@@ -33,6 +33,8 @@ interface ChatViewProps {
   workspace: WorkspaceControls;
   /** File tools only matter when some are enabled. */
   showWorkspace: boolean;
+  onOpenPreview?: (filePath: string) => void;
+  onOpenRawPreview?: (htmlCode: string) => void;
 }
 
 const STARTER_PROMPTS: Record<
@@ -146,6 +148,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
   isCloud,
   workspace,
   showWorkspace,
+  onOpenPreview,
+  onOpenRawPreview,
 }) => {
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -267,6 +271,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 modelName={selectedModel}
                 onApproveToolCalls={onApproveToolCalls}
                 onDenyToolCalls={onDenyToolCalls}
+                onOpenPreview={onOpenPreview}
+                onOpenRawPreview={onOpenRawPreview}
               />
             ))}
           </div>

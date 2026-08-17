@@ -6,6 +6,7 @@ import { ChatView } from './components/ChatView';
 import { StatsBar } from './components/StatsBar';
 import { CommandPalette } from './components/CommandPalette';
 import { TokenPrompt } from './components/TokenPrompt';
+import { LivePreview } from './components/LivePreview';
 import { useEngines } from './hooks/useEngines';
 import { useSessions } from './hooks/useSessions';
 import { useAuth } from './hooks/useAuth';
@@ -27,6 +28,30 @@ export const App: React.FC = () => {
   });
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [rawPreviewHtml, setRawPreviewHtml] = useState<string | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState<number>(0);
+
+  const handleOpenPreview = useCallback((filePath: string) => {
+    setPreviewPath(filePath);
+    setRawPreviewHtml(null);
+    setIsPreviewOpen(true);
+  }, []);
+
+  const handleOpenRawPreview = useCallback((htmlCode: string) => {
+    setRawPreviewHtml(htmlCode);
+    setPreviewPath(null);
+    setIsPreviewOpen(true);
+  }, []);
+
+  const handleTogglePreview = useCallback(() => {
+    setIsPreviewOpen((prev) => !prev);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setIsPreviewOpen(false);
+  }, []);
 
   const paramsRef = useRef(params);
   useEffect(() => {
@@ -88,6 +113,14 @@ export const App: React.FC = () => {
     onCommitMessages: commitMessages,
   });
 
+  const handleApproveToolCallsWrapper = useCallback(
+    async (messageId: string) => {
+      await handleApproveToolCalls(messageId);
+      setPreviewRefreshKey((k) => k + 1);
+    },
+    [handleApproveToolCalls]
+  );
+
   // Global Keyboard Shortcuts (⌘K / Ctrl+K)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -124,6 +157,8 @@ export const App: React.FC = () => {
         selectedModel={selectedModel}
         isCloud={isCloud}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        isPreviewOpen={isPreviewOpen}
+        onTogglePreview={handleTogglePreview}
       />
 
       {/* Main Workspace Layout */}
@@ -151,29 +186,55 @@ export const App: React.FC = () => {
           onRenameSession={renameSession}
         />
 
-        {/* Center / Main Chat Area */}
-        <div className="flex-1 flex flex-col h-full overflow-hidden">
-          <ChatView
-            messages={messages}
-            isStreaming={isStreaming}
-            onSendMessage={onSendMessageWrapper}
-            onStopGeneration={handleStopGeneration}
-            selectedEngine={selectedEngine}
-            selectedModel={selectedModel}
-            profession={params.profession}
-            errorMessage={errorMessage}
-            fallbackLocalModel={fallbackLocalModel}
-            onFallbackAndRetry={handleFallbackAndRetry}
-            fallbackToast={fallbackToast}
-            onApproveToolCalls={handleApproveToolCalls}
-            onDenyToolCalls={handleDenyToolCalls}
-            isCloud={isCloud}
-            workspace={workspace}
-            showWorkspace={params.enabledTools.length > 0}
-          />
+        {/* Center / Main Area (Chat + Optional Live Preview Split) */}
+        <div className="flex-1 flex h-full overflow-hidden">
+          <div
+            className={`flex flex-col h-full overflow-hidden transition-all duration-200 ${
+              isPreviewOpen ? 'flex-1 min-w-0 md:max-w-[55%] lg:max-w-[50%]' : 'flex-1'
+            }`}
+          >
+            <ChatView
+              messages={messages}
+              isStreaming={isStreaming}
+              onSendMessage={onSendMessageWrapper}
+              onStopGeneration={handleStopGeneration}
+              selectedEngine={selectedEngine}
+              selectedModel={selectedModel}
+              profession={params.profession}
+              errorMessage={errorMessage}
+              fallbackLocalModel={fallbackLocalModel}
+              onFallbackAndRetry={handleFallbackAndRetry}
+              fallbackToast={fallbackToast}
+              onApproveToolCalls={handleApproveToolCallsWrapper}
+              onDenyToolCalls={handleDenyToolCalls}
+              isCloud={isCloud}
+              workspace={workspace}
+              showWorkspace={params.enabledTools.length > 0}
+              onOpenPreview={handleOpenPreview}
+              onOpenRawPreview={handleOpenRawPreview}
+            />
 
-          {/* Bottom Speedometer Stats Bar */}
-          <StatsBar stats={currentStats} isStreaming={isStreaming} />
+            {/* Bottom Speedometer Stats Bar */}
+            <StatsBar stats={currentStats} isStreaming={isStreaming} />
+          </div>
+
+          {/* Live Web App Preview Split View */}
+          {isPreviewOpen && (
+            <div className="flex-1 min-w-0 h-full border-l border-white/[0.08] animate-fade-in">
+              <LivePreview
+                filePath={
+                  previewPath ||
+                  (workspace.entries.find(
+                    (e) => e.endsWith('.html') || e.endsWith('.htm') || e === 'index.html'
+                  ) ??
+                    'index.html')
+                }
+                rawHtml={rawPreviewHtml}
+                onClose={handleClosePreview}
+                refreshTrigger={previewRefreshKey}
+              />
+            </div>
+          )}
         </div>
       </div>
 

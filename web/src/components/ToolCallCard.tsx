@@ -20,6 +20,7 @@ import {
   FolderInput,
   FolderTree,
   Search,
+  Eye,
 } from 'lucide-react';
 
 import { WriteDiff } from './WriteDiff';
@@ -28,6 +29,7 @@ interface ToolCallCardProps {
   toolCall: ToolCallExecution;
   onApprove?: () => void;
   onDeny?: () => void;
+  onOpenPreview?: (filePath: string) => void;
 }
 
 /** Tools that change the user's machine, and so warrant a louder prompt. */
@@ -84,11 +86,25 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   search_files: <Search className="w-3.5 h-3.5 text-info-fg" />,
 };
 
-export const ToolCallCard: React.FC<ToolCallCardProps> = React.memo(({ toolCall, onApprove, onDeny }) => {
+export const ToolCallCard: React.FC<ToolCallCardProps> = React.memo(({ toolCall, onApprove, onDeny, onOpenPreview }) => {
   const isPending = toolCall.status === 'pending';
   // A pending call is a decision the user has to make, so show the details up front.
   const [isExpanded, setIsExpanded] = useState(isPending);
   const [copied, setCopied] = useState(false);
+
+  const targetPath = React.useMemo(() => {
+    try {
+      const parsed = JSON.parse(toolCall.arguments);
+      return typeof parsed?.path === 'string' ? parsed.path : '';
+    } catch {
+      return '';
+    }
+  }, [toolCall.arguments]);
+
+  const isHtmlTarget = React.useMemo(() => {
+    if (toolCall.toolName !== 'write_file' && toolCall.toolName !== 'edit_file') return false;
+    return targetPath.endsWith('.html') || targetPath.endsWith('.htm');
+  }, [toolCall.toolName, targetPath]);
 
   const handleCopyOutput = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -147,6 +163,22 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = React.memo(({ toolCall,
         </div>
 
         <div className="flex items-center space-x-2 shrink-0 ml-2">
+          {/* Quick Live Preview button for HTML writes */}
+          {isHtmlTarget && onOpenPreview && targetPath && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenPreview(targetPath);
+              }}
+              title="Open in Live Preview"
+              className="flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] bg-accent/15 text-accent-fg hover:bg-accent/25 border border-accent/30 transition-colors"
+            >
+              <Eye className="w-3 h-3" />
+              <span>Preview</span>
+            </button>
+          )}
+
           {/* Status Badge */}
           {isPending && (
             <span className="flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] bg-warning/15 text-warning-fg border border-warning/30">

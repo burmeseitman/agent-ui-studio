@@ -1,7 +1,7 @@
 import React from 'react';
 import { EngineInfo } from '../types';
 import { CloudDetector } from '../utils/models';
-import { Terminal, RotateCw, Cpu, Cloud, Command } from 'lucide-react';
+import { Terminal, RotateCw, Cpu, Cloud, Command, Eye, EyeOff } from 'lucide-react';
 
 interface HeaderProps {
   engines: EngineInfo[];
@@ -11,6 +11,8 @@ interface HeaderProps {
   selectedModel: string;
   isCloud: CloudDetector;
   onOpenCommandPalette?: () => void;
+  isPreviewOpen?: boolean;
+  onTogglePreview?: () => void;
 }
 
 /**
@@ -29,6 +31,8 @@ export const Header: React.FC<HeaderProps> = React.memo(
     selectedModel,
     isCloud,
     onOpenCommandPalette,
+    isPreviewOpen,
+    onTogglePreview,
   }) => {
     const modelIsCloud = isCloud(selectedEngine, selectedModel);
 
@@ -103,6 +107,27 @@ export const Header: React.FC<HeaderProps> = React.memo(
               </div>
             ))}
           </div>
+
+          {/* Live Preview Toggle Button */}
+          {onTogglePreview && (
+            <button
+              type="button"
+              onClick={onTogglePreview}
+              title={isPreviewOpen ? 'Close Live Preview' : 'Open Live Preview'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                isPreviewOpen
+                  ? 'bg-accent/15 border-accent/30 text-accent-fg'
+                  : 'border-white/[0.06] text-ink-400 hover:text-ink-100 hover:bg-white/[0.04]'
+              }`}
+            >
+              {isPreviewOpen ? (
+                <EyeOff className="w-3.5 h-3.5" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" />
+              )}
+              <span className="hidden sm:inline">Preview</span>
+            </button>
+          )}
 
           <button
             type="button"
