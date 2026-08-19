@@ -2,12 +2,49 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchWorkspace, setWorkspace as setWorkspaceApi, WorkspaceInfo } from '../services/api';
 import { isDesktop } from '../services/daemon';
 
+const WORKSPACE_STORAGE_KEY = 'agentui_workspace_path';
+
+function storage(): Storage | null {
+  try {
+    return typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function'
+      ? localStorage
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeRead(key: string): string | null {
+  try {
+    return storage()?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function safeWrite(key: string, value: string): void {
+  try {
+    storage()?.setItem(key, value);
+  } catch {
+    // Ignore storage quota or permission errors
+  }
+}
+
+function safeRemove(key: string): void {
+  try {
+    storage()?.removeItem(key);
+  } catch {
+    // Ignore
+  }
+}
+
 /**
  * Tracks the directory the agent's file tools operate in.
  *
  * The daemon sandboxes every file tool to this root. The desktop app defaults it
  * to the user's home directory, which is rarely what they mean — so the path is
  * shown in the UI, handed to the model in the system prompt, and changeable.
+ * The chosen path is persisted across app restarts in localStorage.
  */
 export function useWorkspace(authReady: boolean) {
   const [workspace, setWorkspaceState] = useState<WorkspaceInfo | null>(null);
@@ -17,6 +54,20 @@ export function useWorkspace(authReady: boolean) {
   const reload = useCallback(async () => {
     if (!authReady) return false;
     try {
+      const savedPath = safeRead(WORKSPACE_STORAGE_KEY);
+      if (savedPath) {
+        try {
+          const restored = await setWorkspaceApi(savedPath);
+          setWorkspaceState(restored);
+          setError(null);
+          return true;
+        } catch {
+          // If the saved path no longer exists or cannot be opened,
+          // clear the saved key and fall back to fetching the default workspace.
+          safeRemove(WORKSPACE_STORAGE_KEY);
+        }
+      }
+
       setWorkspaceState(await fetchWorkspace());
       setError(null);
       return true;
@@ -49,7 +100,9 @@ export function useWorkspace(authReady: boolean) {
   const changeWorkspace = useCallback(async (path: string) => {
     setIsChanging(true);
     try {
-      setWorkspaceState(await setWorkspaceApi(path));
+      const updated = await setWorkspaceApi(path);
+      setWorkspaceState(updated);
+      safeWrite(WORKSPACE_STORAGE_KEY, updated.path || path);
       setError(null);
       return true;
     } catch (err: unknown) {
