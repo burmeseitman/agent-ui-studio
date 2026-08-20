@@ -33,7 +33,10 @@ web/.env.*
 .DS_Store
 .idea/
 .vscode/
+.claude/
 *.swp
+*.log
+Thumbs.db
 
 # Tauri desktop build artifacts
 web/src-tauri/target/
