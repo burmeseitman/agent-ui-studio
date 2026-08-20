@@ -122,6 +122,6 @@ jobs:
             > because the developer cannot be verified": right-click the app and choose *Open*,
             > or run `xattr -dr com.apple.quarantine "/Applications/AgentUI Studio.app"`.
             > Windows SmartScreen will warn similarly — choose *More info → Run anyway*.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
