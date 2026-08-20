@@ -151,6 +151,9 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
   // Listen for console logs posted from the iframe bridge
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
+      if (iframeRef.current && event.source !== iframeRef.current.contentWindow) {
+        return;
+      }
       if (event.data?.type === 'agentui_preview_console') {
         const item: ConsoleLogItem = {
           id: `log_${Date.now()}_${Math.random()}`,
@@ -373,7 +376,7 @@ export const LivePreview: React.FC<LivePreviewProps> = ({
               key={`${filePath || 'raw'}_${refreshTrigger || 0}_${reloadKey}`}
               srcDoc={srcDoc}
               title="Live App Preview"
-              sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
+              sandbox="allow-scripts allow-modals allow-forms"
               className="w-full h-full border-0 bg-white"
             />
           </div>

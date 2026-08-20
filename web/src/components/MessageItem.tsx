@@ -24,6 +24,21 @@ interface MessageItemProps {
   onOpenRawPreview?: (htmlCode: string) => void;
 }
 
+function sanitizeHref(rawHref?: string): string {
+  if (!rawHref) return '#';
+  const trimmed = rawHref.trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('mailto:') ||
+    lower.startsWith('#')
+  ) {
+    return trimmed;
+  }
+  return '#';
+}
+
 /** Highlighting failures must not inject raw code into innerHTML. */
 function escapeHtml(text: string): string {
   return text
@@ -310,11 +325,12 @@ export const MessageItem: React.FC<MessageItemProps> = React.memo(({
                 return <h3 className="text-sm font-semibold text-ink-50 mt-3 mb-1">{children}</h3>;
               },
               a({ href, children }) {
+                const safeHref = sanitizeHref(href);
                 return (
                   <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={safeHref}
+                    target={safeHref.startsWith('http') ? '_blank' : undefined}
+                    rel={safeHref.startsWith('http') ? 'noopener noreferrer' : undefined}
                     className="text-accent-fg hover:text-accent-fg underline underline-offset-2"
                   >
                     {children}
