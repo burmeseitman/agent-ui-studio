@@ -2,6 +2,7 @@ package tools
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -72,12 +73,22 @@ func TestExecuteTool_Developer(t *testing.T) {
 	}
 
 	// 4. Execute safe command
-	echoOut, err := ExecuteTool("execute_command", `{"command":"echo 'agent test'"}`)
-	if err != nil {
-		t.Fatalf("execute_command failed: %v", err)
-	}
-	if !strings.Contains(echoOut, "agent test") {
-		t.Fatalf("expected echo output, got %q", echoOut)
+	if runtime.GOOS == "windows" {
+		cmdOut, err := ExecuteTool("execute_command", `{"command":"git version"}`)
+		if err != nil {
+			t.Fatalf("execute_command failed: %v", err)
+		}
+		if !strings.Contains(cmdOut, "git version") {
+			t.Fatalf("expected git version output, got %q", cmdOut)
+		}
+	} else {
+		echoOut, err := ExecuteTool("execute_command", `{"command":"echo 'agent test'"}`)
+		if err != nil {
+			t.Fatalf("execute_command failed: %v", err)
+		}
+		if !strings.Contains(echoOut, "agent test") {
+			t.Fatalf("expected echo output, got %q", echoOut)
+		}
 	}
 }
 
