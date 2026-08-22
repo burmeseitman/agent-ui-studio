@@ -45,6 +45,11 @@
     "externalBin": [
       "binaries/agentui-daemon"
     ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "resources": [],
     "category": "DeveloperTool",
     "shortDescription": "Workspace for local AI engines",
