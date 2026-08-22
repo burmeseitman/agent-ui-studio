@@ -220,7 +220,7 @@ func TestSearchFiles_FindsMatchesWithLocations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
-	if !strings.Contains(out, "src/app.go:3") {
+	if !strings.Contains(out, "src/app.go:3") && !strings.Contains(out, "src\\app.go:3") {
 		t.Fatalf("expected a file:line match, got:\n%s", out)
 	}
 

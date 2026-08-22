@@ -270,6 +270,7 @@ func SearchFiles(query, pathFilter string) (string, error) {
 		}
 
 		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
 		for i, line := range strings.Split(string(data), "\n") {
 			if strings.Contains(line, query) {
 				trimmed := strings.TrimSpace(line)
