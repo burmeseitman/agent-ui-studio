@@ -35,9 +35,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The workflow builds four targets, runs the test suites on each, and opens a
-**draft** release with the installers attached. Review it on GitHub and press
-publish when you are happy.
+The workflow builds four targets across Windows, macOS (Apple Silicon & Intel), and Linux, runs the test suites on each, and automatically publishes the release with all installers attached.
 
 | Platform | Artifacts |
 | --- | --- |

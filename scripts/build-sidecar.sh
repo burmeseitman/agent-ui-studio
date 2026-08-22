@@ -31,12 +31,13 @@ esac
 EXT=""
 [ "$GOOS" = "windows" ] && EXT=".exe"
 
+cd "$ROOT"
+OUT_DIR="web/src-tauri/binaries"
 mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/agentui-daemon-$TRIPLE$EXT"
 
 echo "building sidecar for $TRIPLE (GOOS=$GOOS GOARCH=$GOARCH)"
-cd "$ROOT"
 CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-  go build -trimpath -ldflags="-s -w" -o "$OUT" .
+  go build -trimpath -buildvcs=false -ldflags="-s -w" -o "$OUT" .
 
 echo "wrote $OUT"
