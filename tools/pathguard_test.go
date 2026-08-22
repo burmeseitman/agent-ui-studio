@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -53,16 +54,23 @@ func TestSecurity_InWorkspaceCommandsStillWork(t *testing.T) {
 		t.Fatalf("setup failed: %v", err)
 	}
 
-	for _, command := range []string{
-		"pwd",
-		"ls .",
-		"ls src",
-		"cat src/a.txt",
-		"find . -type f",
-		"grep hello src/a.txt",
-		"echo plain-argument",
-		"wc -l src/a.txt",
-	} {
+	var commands []string
+	if runtime.GOOS == "windows" {
+		commands = []string{"git status", "whoami", "go version"}
+	} else {
+		commands = []string{
+			"pwd",
+			"ls .",
+			"ls src",
+			"cat src/a.txt",
+			"find . -type f",
+			"grep hello src/a.txt",
+			"echo plain-argument",
+			"wc -l src/a.txt",
+		}
+	}
+
+	for _, command := range commands {
 		if _, err := ExecuteCommand(context.Background(), command); err != nil {
 			t.Fatalf("expected %q to be allowed inside the workspace: %v", command, err)
 		}

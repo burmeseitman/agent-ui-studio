@@ -56,7 +56,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: web/src-tauri -> target
-          key: ${{ matrix.target }}
+          prefix-key: "v1-${{ matrix.target }}"
 
       # Tauri's Linux bundler needs the system webview and packaging tools.
       - name: Install Linux dependencies

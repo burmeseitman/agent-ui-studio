@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -94,6 +95,20 @@ func TestSecurity_DangerousSubcommandsAndFlags(t *testing.T) {
 }
 
 func TestExecuteCommand_AllowedStillWork(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		out, err := ExecuteCommand(context.Background(), "git version")
+		if err != nil {
+			t.Fatalf("git version failed: %v", err)
+		}
+		if !strings.Contains(out, "git version") {
+			t.Fatalf("unexpected git version output: %q", out)
+		}
+		if _, err := ExecuteCommand(context.Background(), "whoami"); err != nil {
+			t.Fatalf("whoami failed: %v", err)
+		}
+		return
+	}
+
 	out, err := ExecuteCommand(context.Background(), "echo 'agent test'")
 	if err != nil {
 		t.Fatalf("echo failed: %v", err)
@@ -120,7 +135,11 @@ func TestExecuteCommand_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := ExecuteCommand(ctx, "pwd"); err == nil {
+	cmd := "pwd"
+	if runtime.GOOS == "windows" {
+		cmd = "git version"
+	}
+	if _, err := ExecuteCommand(ctx, cmd); err == nil {
 		t.Fatal("expected cancelled context to abort the command")
 	}
 }
