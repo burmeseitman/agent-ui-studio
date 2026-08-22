@@ -24,8 +24,19 @@ func assertSafeRoot(abs string) error {
 		return fmt.Errorf(
 			"%s is too broad to use as a workspace; choose a project folder instead", clean)
 	}
-	if clean == string(filepath.Separator) {
+	if clean == string(filepath.Separator) || clean == "/" || clean == "\\" {
 		return fmt.Errorf("the filesystem root is too broad to use as a workspace")
+	}
+	vol := filepath.VolumeName(clean)
+	if vol != "" && (clean == vol || clean == vol+"\\" || clean == vol+"/") {
+		return fmt.Errorf("the filesystem root is too broad to use as a workspace")
+	}
+	if filepath.Dir(clean) == clean {
+		return fmt.Errorf("the filesystem root is too broad to use as a workspace")
+	}
+	base := strings.TrimPrefix(clean, vol)
+	if forbiddenRoots[base] || forbiddenRoots[filepath.ToSlash(base)] {
+		return fmt.Errorf("%s is too broad to use as a workspace; choose a project folder instead", clean)
 	}
 	return nil
 }

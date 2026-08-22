@@ -92,7 +92,17 @@ func sanitizeWorkspacePath(path string) (string, error) {
 	}
 
 	targetPath := path
-	if !filepath.IsAbs(targetPath) {
+	if filepath.IsAbs(targetPath) {
+		// already absolute
+	} else if strings.HasPrefix(targetPath, "/") || strings.HasPrefix(targetPath, "\\") {
+		vol := filepath.VolumeName(workspaceRoot)
+		if vol != "" {
+			targetPath = filepath.Join(vol+string(filepath.Separator), targetPath)
+		}
+	} else if len(targetPath) >= 2 && targetPath[1] == ':' {
+		// drive relative or drive absolute
+		targetPath = filepath.Clean(targetPath)
+	} else {
 		targetPath = filepath.Join(workspaceRoot, targetPath)
 	}
 	targetPath = filepath.Clean(targetPath)
@@ -108,7 +118,7 @@ func sanitizeWorkspacePath(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("access denied: path %q escapes project workspace boundary", path)
 	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || strings.HasPrefix(rel, "../") || strings.HasPrefix(rel, "..\\") {
 		return "", fmt.Errorf("access denied: path %q escapes project workspace boundary", path)
 	}
 
