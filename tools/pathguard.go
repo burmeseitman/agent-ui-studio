@@ -13,14 +13,48 @@ var forbiddenRoots = map[string]bool{
 	"/": true, "/etc": true, "/usr": true, "/bin": true, "/sbin": true,
 	"/var": true, "/private": true, "/System": true, "/Library": true,
 	"/Applications": true, "/opt": true, "/dev": true, "/proc": true,
-	"/root": true, "/boot": true,
+	"/root": true, "/var/root": true, "/boot": true,
 	"C:\\": true, "C:\\Windows": true, "C:\\Program Files": true,
+}
+
+// isForbiddenAlias reports whether a resolved path is another name for one of
+// the forbidden roots.
+//
+// Matching the literal path is not enough: on macOS /etc, /var and /tmp are
+// symlinks into /private, so /private/etc reaches exactly what blocking /etc
+// was meant to prevent. Both sides are resolved and compared, rather than
+// blocking everything under a forbidden root — /var resolves to /private/var,
+// and per-user temporary directories live below it legitimately.
+func isForbiddenAlias(resolved string) bool {
+	for root := range forbiddenRoots {
+		candidate := root
+		if r, err := filepath.EvalSymlinks(root); err == nil {
+			candidate = r
+		}
+		if filepath.Clean(candidate) == resolved {
+			return true
+		}
+	}
+	return false
 }
 
 // assertSafeRoot rejects directories that are too broad to sandbox.
 func assertSafeRoot(abs string) error {
 	clean := filepath.Clean(abs)
 	if forbiddenRoots[clean] {
+		return fmt.Errorf(
+			"%s is too broad to use as a workspace; choose a project folder instead", clean)
+	}
+	resolved := clean
+	if r, err := filepath.EvalSymlinks(clean); err == nil {
+		resolved = filepath.Clean(r)
+	}
+	if isForbiddenAlias(resolved) {
+		if resolved != clean {
+			return fmt.Errorf(
+				"%s resolves to %s, which is too broad to use as a workspace; choose a project folder instead",
+				clean, resolved)
+		}
 		return fmt.Errorf(
 			"%s is too broad to use as a workspace; choose a project folder instead", clean)
 	}
