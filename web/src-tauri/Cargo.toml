@@ -1,6 +1,6 @@
 [package]
 name = "agentui-studio"
-version = "0.1.0"
+version = "0.1.1"
 description = "AgentUI Studio - Developer Workspace for Local AI Engines"
 authors = ["AgentUI Studio contributors"]
 edition = "2021"
