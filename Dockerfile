@@ -35,6 +35,14 @@ EXPOSE 8080
 ENV OLLAMA_URL=http://host.docker.internal:11434 \
     LMSTUDIO_URL=http://host.docker.internal:1234
 
+# A published port is unreachable if the daemon only listens on the container's
+# own loopback, so the container binds every interface. The container boundary
+# replaces the loopback binding as the perimeter, and the daemon refuses to
+# start this way without a token — set AGENTUI_TOKEN when running:
+#
+#   docker run -p 8080:8080 -e AGENTUI_TOKEN="$(openssl rand -hex 24)" \
+#     -v "$PWD:/workspace" agentui-studio
+#
 # The frontend is served from the same origin as the API, so no CORS setup is
 # needed for the containerised deployment.
-CMD ["./agentui-daemon", "-static-dir", "/app/web/dist", "-workspace", "/workspace"]
+CMD ["./agentui-daemon", "-host", "0.0.0.0", "-static-dir", "/app/web/dist", "-workspace", "/workspace"]

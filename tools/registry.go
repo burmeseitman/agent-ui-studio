@@ -13,6 +13,20 @@ var (
 	allToolsOnce  sync.Once
 )
 
+// executeCommandDescription renders the execute_command schema text against
+// the policy as it stands at call time.
+//
+// The allowlist is not static: the user can turn project execution on mid
+// session, which widens it. Baking the text into the cached definition would
+// freeze whatever the policy happened to be at first call, so the model would
+// keep being told that npm and node are off limits after they were enabled.
+func executeCommandDescription() string {
+	return "Run a single command in the workspace. Executed directly without a shell: " +
+		"pipes, redirection, command substitution and chaining are NOT supported. " +
+		"Only these binaries are permitted: " + strings.Join(AllowedCommandNames(), ", ") +
+		". git and go accept an allowlisted subcommand only."
+}
+
 // AllTools returns all available tools with full JSON schema specifications.
 func AllTools() []ToolDefinition {
 	allToolsOnce.Do(func() {
@@ -23,7 +37,7 @@ func AllTools() []ToolDefinition {
 				Category: "developer",
 				Function: FunctionDefinition{
 					Name:        "execute_command",
-					Description: "Run a single read-only inspection command in the workspace. Executed directly without a shell: pipes, redirection, command substitution and chaining are NOT supported. Only these binaries are permitted: " + strings.Join(AllowedCommandNames(), ", ") + ". git and go accept read-only subcommands only.",
+					Description: executeCommandDescription(),
 					Parameters: ToolParametersSchema{
 						Type: "object",
 						Properties: map[string]ToolParameterProperty{
@@ -229,6 +243,13 @@ func AllTools() []ToolDefinition {
 
 	result := make([]ToolDefinition, len(allToolsCache))
 	copy(result, allToolsCache)
+	// Refresh the one description that depends on mutable policy. The copy is
+	// per call, so this never mutates the cache other callers share.
+	for i := range result {
+		if result[i].Function.Name == "execute_command" {
+			result[i].Function.Description = executeCommandDescription()
+		}
+	}
 	return result
 }
 

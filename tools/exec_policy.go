@@ -116,6 +116,8 @@ var projectCommands = map[string]commandRule{
 	"npx":      {},
 	"deno":     {},
 	"bun":      {},
+	"yarn":     {Subcommands: argSet("install", "add", "run", "build", "test", "dev")},
+	"pnpm":     {Subcommands: argSet("install", "add", "run", "build", "test", "dev")},
 	"python":   {},
 	"python3":  {},
 	"pytest":   {},
@@ -136,11 +138,14 @@ var projectCommands = map[string]commandRule{
 
 // projectSubcommands widen existing entries rather than replacing them, so
 // "npm install" becomes available without also unlocking "git push".
+//
+// Only commands that already appear in allowedCommands belong here. A command
+// that exists solely under project execution — yarn, pnpm — carries its own
+// subcommand set in projectCommands instead, because there is no read-only
+// entry to widen.
 var projectSubcommands = map[string][]string{
-	"npm":  {"install", "i", "ci", "run", "test", "exec", "build", "start", "audit", "update", "uninstall", "init", "publish"},
-	"go":   {"run", "test", "generate", "get", "install", "work"},
-	"yarn": {"install", "add", "run", "build", "test", "dev"},
-	"pnpm": {"install", "add", "run", "build", "test", "dev"},
+	"npm": {"install", "i", "ci", "run", "test", "exec", "build", "start", "audit", "update", "uninstall", "init", "publish"},
+	"go":  {"run", "test", "generate", "get", "install", "work"},
 }
 
 // checkCommandPolicy validates a parsed argv against the allowlist.
@@ -224,12 +229,24 @@ func checkCommandPolicy(argv []string) error {
 	return nil
 }
 
-// AllowedCommandNames returns the sorted set of invocable binaries, for docs
-// and for the tool description handed to the model.
+// AllowedCommandNames returns the sorted set of binaries that may be invoked
+// right now, for docs and for the tool description handed to the model.
+//
+// The project command set is included only while project execution is on:
+// reporting the read-only list in that state tells the model that npm install
+// and node are forbidden when they are in fact available, and it will not
+// attempt what it believes it cannot do.
 func AllowedCommandNames() []string {
-	names := make([]string, 0, len(allowedCommands))
+	names := make([]string, 0, len(allowedCommands)+len(projectCommands))
 	for name := range allowedCommands {
 		names = append(names, name)
+	}
+	if ProjectExecutionEnabled() {
+		for name := range projectCommands {
+			if _, duplicate := allowedCommands[name]; !duplicate {
+				names = append(names, name)
+			}
+		}
 	}
 	// Insertion sort keeps this dependency-free and the list is tiny.
 	for i := 1; i < len(names); i++ {
