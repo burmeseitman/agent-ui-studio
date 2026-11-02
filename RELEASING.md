@@ -39,10 +39,14 @@ The workflow builds four targets across Windows, macOS (Apple Silicon & Intel), 
 
 | Platform | Artifacts |
 | --- | --- |
-| macOS (Apple Silicon) | `AgentUI Studio_<version>_aarch64.dmg` |
-| macOS (Intel) | `AgentUI Studio_<version>_x64.dmg` |
-| Windows | `.msi` and an NSIS `.exe` |
-| Linux | `.AppImage` and `.deb` |
+| macOS (Apple Silicon) | `AgentUI.Studio_<version>_aarch64.dmg`, `AgentUI.Studio_aarch64.app.tar.gz` |
+| macOS (Intel) | `AgentUI.Studio_<version>_x64.dmg`, `AgentUI.Studio_x64.app.tar.gz` |
+| Windows | `AgentUI.Studio_<version>_x64-setup.exe` (NSIS) |
+| Linux | `.AppImage`, `.deb` and `.rpm` |
+
+The Windows job passes `--bundles nsis`, so the release carries the NSIS
+installer only. A local `make desktop` on Windows bundles every target and does
+also produce an `.msi`; that one is not published.
 
 `workflow_dispatch` runs the same job against an existing tag if a build needs
 repeating.

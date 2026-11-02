@@ -119,7 +119,7 @@ jobs:
             - macOS Apple Silicon: `.dmg` with `aarch64` in the name
             - macOS Intel: `.dmg` with `x64` in the name
             - Windows: NSIS `.exe` installer
-            - Linux: `.AppImage` (portable) or `.deb`
+            - Linux: `.AppImage` (portable), `.deb` or `.rpm`
 
             The Go daemon is bundled inside the app — there is nothing else to install.
 

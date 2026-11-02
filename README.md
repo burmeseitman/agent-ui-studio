@@ -98,8 +98,11 @@ make desktop-dev
 
 Release packages land in `web/src-tauri/target/release/bundle/`:
 - **macOS**: `.dmg` installer and `.app` bundle
-- **Linux**: `.AppImage` and `.deb` packages
-- **Windows**: `.msi` and `.exe` installers
+- **Linux**: `.AppImage`, `.deb` and `.rpm` packages
+- **Windows**: `.msi` and NSIS `.exe` installers
+
+Published releases carry the NSIS `.exe` only — see
+[RELEASING.md](RELEASING.md) for what each tag build attaches.
 
 ---
 
