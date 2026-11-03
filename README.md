@@ -39,10 +39,23 @@ Grab an installer from the
 The Go daemon is bundled inside the app, so there is nothing else to install —
 point it at a workspace folder and a running engine and it works.
 
-These builds are **unsigned**. macOS reports that the developer cannot be
-verified: right-click the app and choose *Open*. Windows SmartScreen warns
-instead: choose *More info → Run anyway*. [RELEASING.md](RELEASING.md) covers
-both, and what each tag build attaches.
+These builds are **not notarised**, so the first launch needs one extra step:
+on macOS right-click the app and choose *Open*, and on Windows choose
+*More info → Run anyway* when SmartScreen warns.
+
+> **v0.1.1 and earlier on macOS**: those bundles were built without a signing
+> identity, which leaves the signature itself invalid — macOS calls the app
+> damaged and offers to move it to the Trash, and neither *Open* nor clearing
+> the quarantine attribute helps. Repair a downloaded copy with:
+>
+> ```bash
+> codesign --force --deep --sign - "/Applications/AgentUI Studio.app"
+> xattr -dr com.apple.quarantine "/Applications/AgentUI Studio.app"
+> ```
+>
+> Releases after v0.1.1 are ad-hoc signed by CI and need neither command.
+
+[RELEASING.md](RELEASING.md) covers signing and what each tag build attaches.
 
 ---
 

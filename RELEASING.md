@@ -71,8 +71,17 @@ Artifacts land in `web/src-tauri/target/<triple>/release/bundle/`.
 
 ## Code signing
 
-The builds are **unsigned**, which is fine for personal use and for sharing with
-people you can talk to, but it is visible to anyone who downloads them:
+The builds are **ad-hoc signed and not notarised**. The release workflow sets
+`APPLE_SIGNING_IDENTITY` to `-` when no Developer ID secret is configured, which
+is what makes macOS builds launchable at all: without any identity Tauri never
+seals the `.app` bundle, the linker's own ad-hoc signature then advertises
+sealed resources that do not exist, and macOS rejects the app as damaged rather
+than merely unidentified. `v0.1.1` and earlier shipped in that state. A
+`codesign --verify --deep --strict` gate now fails the macOS jobs if it happens
+again.
+
+Ad-hoc signing costs nothing and needs no account, but it is not notarisation,
+so a first launch is still gated:
 
 - **macOS** — "cannot be opened because the developer cannot be verified".
   Right-click the app and choose *Open*, or:
@@ -87,10 +96,11 @@ To remove the warnings you need developer identities, which cost money and are
 tied to your identity:
 
 - **Apple**: a Developer Program membership (99 USD/year) for a *Developer ID
-  Application* certificate plus notarisation. Add these repository secrets and
-  the workflow signs and notarises automatically:
+  Application* certificate plus notarisation. The workflow already passes these
+  secrets to the build, so adding all six is enough for it to sign and notarise:
   `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
-  `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`.
+  `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`. `APPLE_SIGNING_IDENTITY` must
+  be among them — it is what displaces the ad-hoc `-` fallback.
 - **Windows**: an OV or EV code-signing certificate from a CA. EV clears
   SmartScreen immediately; OV builds reputation over time.
 

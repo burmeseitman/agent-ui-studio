@@ -108,6 +108,21 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Without an identity Tauri leaves the .app bundle unsealed: the Rust
+          # linker ad-hoc signs the binary, so the signature claims sealed
+          # resources that were never written, and macOS refuses to launch it
+          # as damaged. Neither right-click → Open nor clearing the quarantine
+          # attribute repairs that, because the signature itself is invalid.
+          # "-" is the ad-hoc pseudo-identity, which seals the bundle and
+          # costs nothing; a real Developer ID takes over when the secret is
+          # present. Signing must happen during the build — a codesign step
+          # afterwards would come too late, as the .dmg is already packaged.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: web
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
@@ -130,3 +145,20 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args || format('--target {0}', matrix.target) }}
+
+      # A signature that does not verify is the one defect that makes the app
+      # unlaunchable while every other check passes, so fail the job loudly
+      # rather than leaving it to be discovered after download. This runs after
+      # the upload — tauri-action builds and publishes in one step — so it
+      # marks a bad release as failed instead of preventing it.
+      - name: Verify macOS signature
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          app=$(find "web/src-tauri/target/${{ matrix.target }}/release/bundle/macos" \
+            -maxdepth 1 -name '*.app' -print -quit)
+          if [ -z "$app" ]; then
+            echo "no .app bundle found to verify"; exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$app"
+          echo "signature verified: $app"
