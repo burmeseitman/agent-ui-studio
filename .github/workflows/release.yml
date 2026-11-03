@@ -114,15 +114,17 @@ jobs:
           # as damaged. Neither right-click → Open nor clearing the quarantine
           # attribute repairs that, because the signature itself is invalid.
           # "-" is the ad-hoc pseudo-identity, which seals the bundle and
-          # costs nothing; a real Developer ID takes over when the secret is
-          # present. Signing must happen during the build — a codesign step
-          # afterwards would come too late, as the .dmg is already packaged.
+          # costs nothing. Signing must happen during the build — a codesign
+          # step afterwards would come too late, as the .dmg is already
+          # packaged.
+          #
+          # The Developer ID secrets are deliberately NOT forwarded here. An
+          # unset secret expands to an empty string, and Tauri branches on the
+          # variable being present rather than non-empty, so passing them
+          # unconditionally makes every build attempt a keychain import and
+          # fail with "failed to import keychain certificate". RELEASING.md
+          # has the block to add once real certificates exist.
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: web
           tagName: ${{ github.event.inputs.tag || github.ref_name }}

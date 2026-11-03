@@ -96,11 +96,24 @@ To remove the warnings you need developer identities, which cost money and are
 tied to your identity:
 
 - **Apple**: a Developer Program membership (99 USD/year) for a *Developer ID
-  Application* certificate plus notarisation. The workflow already passes these
-  secrets to the build, so adding all six is enough for it to sign and notarise:
+  Application* certificate plus notarisation. Add the six repository secrets
   `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
-  `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`. `APPLE_SIGNING_IDENTITY` must
-  be among them — it is what displaces the ad-hoc `-` fallback.
+  `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID`, then forward the five the
+  workflow does not pass yet, in the `Build and publish` step's `env`:
+
+  ```yaml
+  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+  APPLE_ID: ${{ secrets.APPLE_ID }}
+  APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  ```
+
+  They are left out until then on purpose: an unset secret expands to an empty
+  string, and Tauri treats the variable as present rather than checking that it
+  is non-empty, so forwarding them without certificates makes every macOS build
+  fail trying to import a keychain certificate. `APPLE_SIGNING_IDENTITY` is
+  already forwarded and displaces the ad-hoc `-` as soon as you set it.
 - **Windows**: an OV or EV code-signing certificate from a CA. EV clears
   SmartScreen immediately; OV builds reputation over time.
 
