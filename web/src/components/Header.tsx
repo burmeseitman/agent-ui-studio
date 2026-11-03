@@ -1,7 +1,7 @@
 import React from 'react';
 import { EngineInfo } from '../types';
 import { CloudDetector } from '../utils/models';
-import { Terminal, RotateCw, Cpu, Cloud, Command, Eye, EyeOff } from 'lucide-react';
+import { RotateCw, Cpu, Cloud, Command, Eye, EyeOff } from 'lucide-react';
 
 interface HeaderProps {
   engines: EngineInfo[];
@@ -18,9 +18,14 @@ interface HeaderProps {
 /**
  * Doubles as the window's title bar in the desktop build.
  *
- * The whole strip is a drag region, with interactive controls opted back out —
- * otherwise buttons inside it would move the window instead of being clickable.
- * The left inset clears the macOS traffic lights.
+ * Tauri decides what drags from the attribute on the element under the pointer,
+ * not from an ancestor, so every non-interactive wrapper in the strip carries
+ * data-tauri-drag-region; without it the layout containers swallow the press
+ * and the window cannot be moved. Buttons are left without it so they stay
+ * clickable. The -webkit-app-region rules are kept for parity with browsers
+ * that honour them, but WKWebView ignores them, which is why the attribute is
+ * what actually does the work here. The left inset clears the macOS traffic
+ * lights.
  */
 export const Header: React.FC<HeaderProps> = React.memo(
   ({
@@ -42,19 +47,11 @@ export const Header: React.FC<HeaderProps> = React.memo(
         className="drag-region h-[52px] shrink-0 z-30 select-none flex items-center justify-between gap-4 border-b border-white/[0.06] bg-surface-base/80 backdrop-blur-xl pr-3"
         style={{ paddingLeft: 'max(0.875rem, var(--titlebar-inset))' }}
       >
-        {/* Brand */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-accent-active flex items-center justify-center text-ink-50 shadow-accent-glow shrink-0">
-            <Terminal className="w-3.5 h-3.5 stroke-[2.5]" />
-          </div>
-          <div className="flex items-baseline gap-1.5 min-w-0">
-            <span className="text-sm font-semibold tracking-tight text-ink-50">AgentUI</span>
-            <span className="text-sm font-normal text-ink-400 tracking-tight">Studio</span>
-          </div>
-        </div>
-
         {/* Active model — also the command palette entry point */}
-        <div className="no-drag flex items-center justify-center flex-1 min-w-0">
+        <div
+          data-tauri-drag-region
+          className="flex items-center justify-center flex-1 min-w-0"
+        >
           {selectedModel ? (
             <button
               type="button"
@@ -83,11 +80,12 @@ export const Header: React.FC<HeaderProps> = React.memo(
         </div>
 
         {/* Engine status */}
-        <div className="no-drag flex items-center gap-2 shrink-0">
-          <div className="hidden md:flex items-center gap-1.5">
+        <div data-tauri-drag-region className="flex items-center gap-2 shrink-0">
+          <div data-tauri-drag-region className="hidden md:flex items-center gap-1.5">
             {engines.map((eng) => (
               <div
                 key={eng.name}
+                data-tauri-drag-region
                 title={`${eng.name}: ${eng.active ? `${eng.models.length} models ready` : 'offline'}`}
                 className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-2xs font-medium border transition-colors ${
                   eng.active
