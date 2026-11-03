@@ -10,7 +10,7 @@ Built with **Go (Backend Daemon)** + **React 19, TypeScript & Tailwind CSS** + *
 
 - 🔍 **Zero-Config Auto-Discovery**: Automatically scans local ports (`:11434` for Ollama, `:1234` for LM Studio) and dynamically lists available models.
 - ⚡ **Real-Time SSE Token Streaming**: Server-Sent Events streaming with time-to-first-token, duration, and engine-reported tokens/sec speedometer metrics.
-- 🛠️ **Coding Agent Tools**: `list_tree`, `search_files`, `read_file`, `edit_file`, `write_file`, `move_file`, `delete_file`, and `execute_command` — real tool calling with every change surfaced for review as a side-by-side diff.
+- 🛠️ **Real Agent Tools**: `list_tree`, `list_dir`, `search_files`, `read_file`, `edit_file`, `write_file`, `move_file`, `delete_file` and `execute_command` for code, plus `fetch_url` and `analyze_readability` for research and writing — genuine tool calling, with every change surfaced for review as a side-by-side diff. Each persona is handed only the subset it needs.
 - 🖥️ **Live In-App Web App & HTML Preview**: Instant interactive preview panel for HTML/CSS/JS web apps, calculators, and UI components:
   - **Sandboxed `iframe`** with automatic local CSS/JS asset inlining.
   - **Device Viewport Switcher**: Responsive (100%), Desktop (1024px), Tablet (768px), and Mobile (375px).
@@ -21,6 +21,28 @@ Built with **Go (Backend Daemon)** + **React 19, TypeScript & Tailwind CSS** + *
 - 💬 **Multiple Conversations**: Named, switchable chat sessions kept in the browser with automatic title generation and history pruning.
 - 🎨 **Considered Interface**: Dark, low-chroma palette with bundled Inter and JetBrains Mono fonts, native macOS title bar, syntax highlighting, and collapsible code blocks.
 - 📦 **Native Desktop App**: Tauri build bundling the Go daemon as an embedded sidecar — double-click to run, no terminal or server setup required.
+
+---
+
+## 📥 Install
+
+Grab an installer from the
+[latest release](https://github.com/burmeseitman/agent-ui-studio/releases/latest):
+
+| Platform | File |
+| --- | --- |
+| macOS (Apple Silicon) | `AgentUI.Studio_<version>_aarch64.dmg` |
+| macOS (Intel) | `AgentUI.Studio_<version>_x64.dmg` |
+| Windows | `AgentUI.Studio_<version>_x64-setup.exe` |
+| Linux | `AgentUI.Studio_<version>_amd64.AppImage`, `.deb` or `.rpm` |
+
+The Go daemon is bundled inside the app, so there is nothing else to install —
+point it at a workspace folder and a running engine and it works.
+
+These builds are **unsigned**. macOS reports that the developer cannot be
+verified: right-click the app and choose *Open*. Windows SmartScreen warns
+instead: choose *More info → Run anyway*. [RELEASING.md](RELEASING.md) covers
+both, and what each tag build attaches.
 
 ---
 
@@ -82,6 +104,48 @@ make build-web
 go run . -static-dir web/dist
 ```
 
+### 3. Configuration
+
+The daemon is zero-config for local use; every flag has a working default.
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `-port` | `8080` | Listening port |
+| `-host` | `127.0.0.1` | Listening interface — anything else requires a token |
+| `-api-token` | _(empty)_ | Bearer token required on every API call |
+| `-workspace` | current directory | Root the file tools are sandboxed to |
+| `-static-dir` | `web/dist` | Built frontend to serve (empty to run API-only) |
+| `-allowed-origins` | _(same-origin)_ | Comma-separated extra CORS origins |
+| `-allow-project-execution` | `false` | Widen the command allowlist to build and run commands |
+| `-ollama-url` | `http://localhost:11434` | Ollama base URL |
+| `-lmstudio-url` | `http://localhost:1234` | LM Studio base URL |
+| `-timeout` | `1500` | Engine discovery probe timeout (ms) |
+| `-shutdown-on-stdin-close` | `false` | Exit when stdin closes (used by the desktop shell) |
+
+`PORT`, `AGENTUI_TOKEN`, `OLLAMA_URL` and `LMSTUDIO_URL` set the same values from
+the environment; the matching flag wins when both are given.
+
+---
+
+## 🐳 Docker
+
+The image builds the frontend and the daemon and serves both from one origin:
+
+```bash
+docker build -t agentui-studio .
+docker run -p 8080:8080 \
+  -e AGENTUI_TOKEN="$(openssl rand -hex 24)" \
+  -v "$PWD:/workspace" \
+  agentui-studio
+```
+
+The container binds `0.0.0.0` so the published port is reachable, and the daemon
+refuses to start that way without a token — hence `AGENTUI_TOKEN`. Mount the
+project you want the agent to work on at `/workspace`; the file tools cannot
+reach outside it. Engines are expected on the host, at
+`host.docker.internal` — that name resolves on Docker Desktop; on Linux add
+`--add-host=host.docker.internal:host-gateway`.
+
 ---
 
 ## 🖥️ Desktop Application (Tauri)
@@ -113,7 +177,11 @@ The daemon executes tools on your real machine with multi-layered containment:
 1. **Strict Loopback Binding**: Binds exclusively to `127.0.0.1`. Binding to external interfaces requires an explicit `-api-token`.
 2. **Workspace Sandboxing**: All file tools (`read_file`, `write_file`, `edit_file`, `list_dir`) are strictly sandboxed to the active workspace directory. Path traversal (`../`) and sensitive credential paths (`.env*`, `~/.ssh`, `~/.aws`, `*.pem`) are blocked.
 3. **Execution Policy**: Command execution (`execute_command`) is restricted to a safe, read-only allowlist by default. Arbitrary command execution (building and running scripts) is opt-in and controlled from the Settings panel.
-4. **Approval Control**:
+4. **Outbound Request Filtering**: `fetch_url` is the only tool that leaves your
+   machine. Loopback, private, link-local and unspecified addresses are rejected
+   at dial time — after DNS resolution and again on every redirect — so a public
+   hostname cannot be pointed at your LAN or a cloud metadata endpoint.
+5. **Approval Control**:
    - *Ask every time*: All tool calls require explicit manual approval.
    - *Auto-run reads* (default): Read-only inspection tools run automatically; file modifications and writes wait for your approval as a visual diff.
    - *Run everything*: Full autonomy.

@@ -10,7 +10,7 @@ cannot produce Windows or Linux installers.
 1. Create the GitHub repository and push:
 
    ```bash
-   gh repo create agent-ui-studio --private --source=. --remote=origin
+   gh repo create agent-ui-studio --public --source=. --remote=origin
    git push -u origin main
    ```
 
@@ -26,6 +26,13 @@ Version numbers live in three files and must match:
 | `web/package.json` | `version` |
 | `web/src-tauri/tauri.conf.json` | `version` |
 | `web/src-tauri/Cargo.toml` | `version` |
+
+`make version-check` compares those three. Two lockfiles record the version as
+well and should be bumped in the same commit — `web/package-lock.json` (the
+`version` at the top and inside `packages[""]`, not the unrelated dependency
+that happens to share the number) and the `agentui-studio` entry in
+`web/src-tauri/Cargo.lock`. Nothing fails loudly if you forget, but the
+lockfiles then disagree with the tag.
 
 Then:
 
