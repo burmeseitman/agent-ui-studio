@@ -39,14 +39,20 @@ Grab an installer from the
 The Go daemon is bundled inside the app, so there is nothing else to install —
 point it at a workspace folder and a running engine and it works.
 
-These builds are **not notarised**, so the first launch needs one extra step:
-on macOS right-click the app and choose *Open*, and on Windows choose
-*More info → Run anyway* when SmartScreen warns.
+These builds are **not notarised**, so the first launch needs one extra step.
+
+On macOS, allow it through **System Settings → Privacy & Security**: try to
+launch the app, then scroll to *Security*, click **Open Anyway** and confirm
+with your password. Right-click →
+*Open* was the old route and no longer works — Apple removed that bypass in
+macOS 15 Sequoia.
+
+On Windows, SmartScreen warns instead: choose *More info → Run anyway*.
 
 > **v0.1.1 and earlier on macOS**: those bundles were built without a signing
 > identity, which leaves the signature itself invalid — macOS calls the app
-> damaged and offers to move it to the Trash, and neither *Open* nor clearing
-> the quarantine attribute helps. Repair a downloaded copy with:
+> damaged and offers to move it to the Trash, and neither *Open Anyway* nor
+> clearing the quarantine attribute helps. Repair a downloaded copy with:
 >
 > ```bash
 > codesign --force --deep --sign - "/Applications/AgentUI Studio.app"

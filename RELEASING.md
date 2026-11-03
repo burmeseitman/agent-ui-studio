@@ -84,7 +84,10 @@ Ad-hoc signing costs nothing and needs no account, but it is not notarisation,
 so a first launch is still gated:
 
 - **macOS** — "cannot be opened because the developer cannot be verified".
-  Right-click the app and choose *Open*, or:
+  Launch it once, then allow it under **System Settings → Privacy & Security →
+  Open Anyway**. The older right-click → *Open* route stopped working in macOS
+  15 Sequoia, so do not hand that out. Clearing the quarantine attribute avoids
+  the prompt altogether:
   ```bash
   xattr -dr com.apple.quarantine "/Applications/AgentUI Studio.app"
   ```

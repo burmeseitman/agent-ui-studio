@@ -140,10 +140,14 @@ jobs:
 
             The Go daemon is bundled inside the app — there is nothing else to install.
 
-            > These builds are **not code signed**. macOS will say the app "cannot be opened
-            > because the developer cannot be verified": right-click the app and choose *Open*,
-            > or run `xattr -dr com.apple.quarantine "/Applications/AgentUI Studio.app"`.
-            > Windows SmartScreen will warn similarly — choose *More info → Run anyway*.
+            > These builds are ad-hoc signed but **not notarised**, so the first launch is gated.
+            >
+            > **macOS**: launch the app, then allow it under *System Settings → Privacy &
+            > Security → Open Anyway*. Right-click → *Open* no longer works, as Apple removed
+            > that bypass in macOS 15 Sequoia. To skip the prompt entirely, run
+            > `xattr -dr com.apple.quarantine "/Applications/AgentUI Studio.app"`.
+            >
+            > **Windows**: SmartScreen warns — choose *More info → Run anyway*.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args || format('--target {0}', matrix.target) }}
